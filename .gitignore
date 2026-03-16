@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Captures (output directory)
+captures/*.png
+captures/*.json
+!captures/.gitignore
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
