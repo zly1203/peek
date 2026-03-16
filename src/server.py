@@ -1,7 +1,6 @@
 """UI Inspector bridge server — receives captures from browser, saves to disk.
 Uses Playwright for reliable server-side screenshots."""
 
-import asyncio
 import json
 import base64
 from contextlib import asynccontextmanager
@@ -46,34 +45,20 @@ app.mount("/captures", StaticFiles(directory=str(CAPTURES_DIR)), name="captures"
 
 # ─── Playwright screenshot helper ───
 
+from .screenshot import take_screenshot
+
+
 async def playwright_screenshot(url, viewport=None, scroll=None, clip=None):
     """Take a screenshot via Playwright headless Chromium."""
-    vp = {"width": viewport.get("width", 1280), "height": viewport.get("height", 800)} if viewport else {"width": 1280, "height": 800}
-    context = await browser.new_context(viewport=vp)
-    page = await context.new_page()
-    try:
-        await page.goto(url, wait_until="networkidle", timeout=15000)
-    except Exception:
-        # Fallback: if networkidle times out (e.g. polling pages), use load
-        await page.goto(url, wait_until="load", timeout=10000)
-
-    # Wait for dynamic content (Plotly charts, async data) to render
-    await asyncio.sleep(1.5)
-
-    if scroll:
-        await page.evaluate(f"window.scrollTo({scroll.get('x', 0)}, {scroll.get('y', 0)})")
-        await asyncio.sleep(0.3)
-
-    kwargs = {}
-    if clip:
-        kwargs["clip"] = {
-            "x": clip["x"], "y": clip["y"],
-            "width": clip["width"], "height": clip["height"],
-        }
-
-    screenshot = await page.screenshot(**kwargs)
-    await context.close()
-    return screenshot
+    vp_w = viewport.get("width", 1280) if viewport else 1280
+    vp_h = viewport.get("height", 800) if viewport else 800
+    scroll_x = scroll.get("x", 0) if scroll else 0
+    scroll_y = scroll.get("y", 0) if scroll else 0
+    return await take_screenshot(
+        browser, url,
+        scroll_x=scroll_x, scroll_y=scroll_y, width=vp_w, height=vp_h,
+        clip=clip,
+    )
 
 
 # ─── Setup page ───
@@ -167,7 +152,7 @@ async def receive_capture(request: Request):
 # ─── Standalone screenshot endpoint (Claude Code calls directly) ───
 
 @app.get("/api/screenshot")
-async def take_screenshot(
+async def screenshot_endpoint(
     url: str,
     scroll_y: int = Query(0),
     width: int = Query(1280),
