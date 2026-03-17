@@ -12,6 +12,9 @@ captures/*.png
 captures/*.json
 !captures/.gitignore
 
+# Internal docs
+docs/
+
 # OS
 .DS_Store
 
