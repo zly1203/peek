@@ -178,9 +178,13 @@ def run(host: str = "127.0.0.1", port: int = 8899):
     try:
         mcp.run()
     finally:
-        # Graceful shutdown of bridge server
+        # Graceful shutdown of bridge server and browser
         if _bridge_server:
             _bridge_server.should_exit = True
+        try:
+            asyncio.get_event_loop().run_until_complete(_shutdown_browser())
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

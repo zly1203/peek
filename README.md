@@ -46,7 +46,7 @@ After selecting or annotating, Claude Code automatically receives the screenshot
 Starts the MCP server (for Claude Code) with the bridge server embedded. This is what `claude mcp add` points to.
 
 ```bash
-peek mcp [--port 8899] [--host 0.0.0.0]
+peek mcp [--port 8899] [--host 127.0.0.1]
 ```
 
 ### `peek serve`
@@ -54,7 +54,7 @@ peek mcp [--port 8899] [--host 0.0.0.0]
 Starts only the bridge server. Use this if you don't need MCP integration.
 
 ```bash
-peek serve [--port 8899] [--host 0.0.0.0]
+peek serve [--port 8899] [--host 127.0.0.1]
 ```
 
 ## How It Works

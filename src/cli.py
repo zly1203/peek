@@ -33,12 +33,12 @@ def main():
     # peek serve
     serve_parser = sub.add_parser("serve", help="Start the bridge server")
     serve_parser.add_argument("--port", type=int, default=8899, help="Port (default: 8899)")
-    serve_parser.add_argument("--host", default="127.0.0.1", help="Host (default: 0.0.0.0)")
+    serve_parser.add_argument("--host", default="127.0.0.1", help="Host (default: 127.0.0.1)")
 
     # peek mcp
     mcp_parser = sub.add_parser("mcp", help="Start as MCP server (stdio)")
     mcp_parser.add_argument("--port", type=int, default=8899, help="Bridge server port (default: 8899)")
-    mcp_parser.add_argument("--host", default="127.0.0.1", help="Bridge server host (default: 0.0.0.0)")
+    mcp_parser.add_argument("--host", default="127.0.0.1", help="Bridge server host (default: 127.0.0.1)")
 
     args = parser.parse_args()
 
