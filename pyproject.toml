@@ -24,10 +24,10 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["src", "static"]
 
 [project.scripts]
 peek = "src.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/user/peek"
+Homepage = "https://github.com/zly1203/peek"
