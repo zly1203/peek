@@ -7,9 +7,11 @@ import sys
 def _check_playwright():
     """Check that Playwright Chromium is installed. Exit with guidance if not."""
     try:
+        import os
         from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
-            p.chromium.executable_path
+            if not os.path.exists(p.chromium.executable_path):
+                raise FileNotFoundError("Chromium binary not found")
     except Exception:
         print(
             "\nPlaywright Chromium not found.\n"
