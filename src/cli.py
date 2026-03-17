@@ -1,4 +1,4 @@
-"""CLI entry point for UI Inspector."""
+"""CLI entry point for Peek."""
 
 import argparse
 import sys
@@ -17,7 +17,7 @@ def _check_playwright():
             "\nPlaywright Chromium not found.\n"
             "Run this command to install:\n\n"
             "    playwright install chromium\n\n"
-            "Then restart ui-inspector.\n",
+            "Then restart peek.\n",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -25,17 +25,17 @@ def _check_playwright():
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="ui-inspector",
+        prog="peek",
         description="Let AI agents see your UI — visual inspection bridge for AI coding agents.",
     )
     sub = parser.add_subparsers(dest="command")
 
-    # ui-inspector serve
+    # peek serve
     serve_parser = sub.add_parser("serve", help="Start the bridge server")
     serve_parser.add_argument("--port", type=int, default=8899, help="Port (default: 8899)")
     serve_parser.add_argument("--host", default="0.0.0.0", help="Host (default: 0.0.0.0)")
 
-    # ui-inspector mcp
+    # peek mcp
     mcp_parser = sub.add_parser("mcp", help="Start as MCP server (stdio)")
     mcp_parser.add_argument("--port", type=int, default=8899, help="Bridge server port (default: 8899)")
     mcp_parser.add_argument("--host", default="0.0.0.0", help="Bridge server host (default: 0.0.0.0)")

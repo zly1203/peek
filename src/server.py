@@ -1,4 +1,4 @@
-"""UI Inspector bridge server — receives captures from browser, saves to disk.
+"""Peek bridge server — receives captures from browser, saves to disk.
 Uses Playwright for reliable server-side screenshots."""
 
 import json
@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-BASE_DIR = Path(__file__).resolve().parent.parent  # project root (ui-inspector/)
+BASE_DIR = Path(__file__).resolve().parent.parent  # project root (peek/)
 CAPTURES_DIR = BASE_DIR / "captures"
 STATIC_DIR = BASE_DIR / "static"
 CAPTURES_DIR.mkdir(exist_ok=True)
@@ -67,7 +67,7 @@ SETUP_HTML = """<!DOCTYPE html>
 <html lang="zh">
 <head>
 <meta charset="utf-8">
-<title>UI Inspector Setup</title>
+<title>Peek Setup</title>
 <style>
   body { font-family: -apple-system, system-ui, sans-serif; max-width: 640px; margin: 60px auto; padding: 0 20px; color: #1a1a1a; line-height: 1.6; }
   h1 { font-size: 1.5rem; }
@@ -80,18 +80,18 @@ SETUP_HTML = """<!DOCTYPE html>
 </style>
 </head>
 <body>
-<h1>UI Inspector</h1>
+<h1>Peek</h1>
 <p>把下面的按钮<b>拖到书签栏</b>，然后在任意 localhost 页面点击即可使用。</p>
 
 <p style="text-align:center; margin: 32px 0;">
   <a class="bookmarklet" href="javascript:(function(){if(window.__inspectorLoaded){return}var s=document.createElement('script');s.src='http://localhost:8899/static/inspector.js?t='+Date.now();s.onload=function(){window.__inspectorLoaded=true};document.head.appendChild(s)})()">
-    UI Inspector
+    Peek
   </a>
 </p>
 
-<div class="step"><b>Step 1</b> — 保持本服务运行: <code>python ui-inspector/server.py</code></div>
+<div class="step"><b>Step 1</b> — 保持本服务运行: <code>peek serve</code></div>
 <div class="step"><b>Step 2</b> — 把上面蓝色按钮拖到浏览器书签栏</div>
-<div class="step"><b>Step 3</b> — 打开任意 localhost 页面，点击书签栏的 "UI Inspector"</div>
+<div class="step"><b>Step 3</b> — 打开任意 localhost 页面，点击书签栏的 "Peek"</div>
 <div class="step"><b>Step 4</b> — 使用工具栏选择模式:
   <ul style="margin:8px 0">
     <li><span class="keys">Alt+R</span> 区域选择 — 像截图一样拖拽选区</li>

@@ -1,5 +1,5 @@
 /**
- * UI Inspector — inject into any localhost page via bookmarklet.
+ * Peek — inject into any localhost page via bookmarklet.
  * Provides region select, element select, and annotation modes.
  * Sends captures to bridge server at localhost:8899.
  */
@@ -112,7 +112,7 @@
       return result;
     } catch (e) {
       showToast("Failed — is bridge server running?", true);
-      console.error("UI Inspector capture failed:", e);
+      console.error("Peek capture failed:", e);
     }
   }
 
@@ -609,5 +609,5 @@
 
   // ─── Init ───
   createToolbar();
-  showToast("UI Inspector ready — choose a mode");
+  showToast("Peek ready — choose a mode");
 })();

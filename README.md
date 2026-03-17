@@ -1,4 +1,4 @@
-# UI Inspector
+# Peek
 
 Let AI agents see your UI — point at elements, annotate, and get instant visual context for AI-powered code editing.
 
@@ -7,25 +7,25 @@ Let AI agents see your UI — point at elements, annotate, and get instant visua
 ### 1. Install
 
 ```bash
-pip install ui-inspector
+pip install peek
 playwright install chromium
 ```
 
 ### 2. Configure Claude Code MCP
 
 ```bash
-claude mcp add ui-inspector -- ui-inspector mcp
+claude mcp add peek -- peek mcp
 ```
 
-This registers UI Inspector as a tool that Claude Code can call directly.
+This registers Peek as a tool that Claude Code can call directly.
 
 ### 3. Install the Bookmarklet
 
 ```bash
-ui-inspector serve
+peek serve
 ```
 
-Open http://localhost:8899 and drag the blue "UI Inspector" button to your bookmark bar. This is a one-time setup.
+Open http://localhost:8899 and drag the blue "Peek" button to your bookmark bar. This is a one-time setup.
 
 ## Usage
 
@@ -41,20 +41,20 @@ After selecting or annotating, Claude Code automatically receives the screenshot
 
 ## CLI Commands
 
-### `ui-inspector mcp` (recommended)
+### `peek mcp` (recommended)
 
 Starts the MCP server (for Claude Code) with the bridge server embedded. This is what `claude mcp add` points to.
 
 ```bash
-ui-inspector mcp [--port 8899] [--host 0.0.0.0]
+peek mcp [--port 8899] [--host 0.0.0.0]
 ```
 
-### `ui-inspector serve`
+### `peek serve`
 
 Starts only the bridge server. Use this if you don't need MCP integration.
 
 ```bash
-ui-inspector serve [--port 8899] [--host 0.0.0.0]
+peek serve [--port 8899] [--host 0.0.0.0]
 ```
 
 ## How It Works

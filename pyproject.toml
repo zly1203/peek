@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "ui-inspector"
+name = "peek"
 version = "0.1.0"
 description = "Let AI agents see your UI — point at elements, annotate, and get instant visual context for AI-powered code editing."
 readme = "README.md"
@@ -20,7 +20,7 @@ dependencies = [
 packages = ["src"]
 
 [project.scripts]
-ui-inspector = "src.cli:main"
+peek = "src.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/user/ui-inspector"
+Homepage = "https://github.com/user/peek"

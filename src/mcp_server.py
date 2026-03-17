@@ -1,4 +1,4 @@
-"""MCP Server for UI Inspector.
+"""MCP Server for Peek.
 
 Exposes two tools to Claude Code via stdio:
 - screenshot: take a screenshot of any URL
@@ -23,7 +23,7 @@ from .screenshot import take_screenshot
 
 # All logging must go to stderr (stdout is MCP stdio transport)
 logging.basicConfig(level=logging.INFO, stream=sys.stderr)
-logger = logging.getLogger("ui-inspector")
+logger = logging.getLogger("peek")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 CAPTURES_DIR = BASE_DIR / "captures"
@@ -31,7 +31,7 @@ CAPTURES_DIR.mkdir(exist_ok=True)
 
 # ─── MCP Server ───
 
-mcp = FastMCP(name="ui-inspector")
+mcp = FastMCP(name="peek")
 
 # Playwright browser (managed per MCP server lifecycle)
 _pw = None
@@ -98,7 +98,7 @@ async def screenshot(
 
 @mcp.tool()
 async def get_latest_capture() -> list:
-    """Get the latest capture from the UI Inspector bookmarklet.
+    """Get the latest capture from the Peek bookmarklet.
 
     Returns the screenshot image, element metadata (selectors, styles,
     bounding boxes), and annotation overlay if available. Use this after
