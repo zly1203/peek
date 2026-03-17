@@ -6,6 +6,19 @@ browser instance in.
 """
 
 import asyncio
+from urllib.parse import urlparse
+
+ALLOWED_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
+
+
+def validate_url(url):
+    """Restrict URLs to localhost to prevent SSRF."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
+    if parsed.hostname not in ALLOWED_HOSTS:
+        raise ValueError(f"URL host must be localhost, got: {parsed.hostname}")
+    return url
 
 
 async def take_screenshot(browser, url, scroll_x=0, scroll_y=0, width=1280, height=800, clip=None):
@@ -22,27 +35,34 @@ async def take_screenshot(browser, url, scroll_x=0, scroll_y=0, width=1280, heig
 
     Returns:
         PNG screenshot as bytes
+
+    Raises:
+        ValueError: If URL is not localhost
     """
+    validate_url(url)
+
     context = await browser.new_context(viewport={"width": width, "height": height})
-    page = await context.new_page()
     try:
-        await page.goto(url, wait_until="networkidle", timeout=15000)
-    except Exception:
-        await page.goto(url, wait_until="load", timeout=10000)
+        page = await context.new_page()
+        try:
+            await page.goto(url, wait_until="networkidle", timeout=15000)
+        except Exception:
+            await page.goto(url, wait_until="load", timeout=10000)
 
-    await asyncio.sleep(1.5)
+        await asyncio.sleep(1.5)
 
-    if scroll_x or scroll_y:
-        await page.evaluate(f"window.scrollTo({scroll_x}, {scroll_y})")
-        await asyncio.sleep(0.3)
+        if scroll_x or scroll_y:
+            await page.evaluate("([x, y]) => window.scrollTo(x, y)", [int(scroll_x), int(scroll_y)])
+            await asyncio.sleep(0.3)
 
-    kwargs = {}
-    if clip:
-        kwargs["clip"] = {
-            "x": clip["x"], "y": clip["y"],
-            "width": clip["width"], "height": clip["height"],
-        }
+        kwargs = {}
+        if clip:
+            kwargs["clip"] = {
+                "x": clip["x"], "y": clip["y"],
+                "width": clip["width"], "height": clip["height"],
+            }
 
-    screenshot = await page.screenshot(**kwargs)
-    await context.close()
-    return screenshot
+        screenshot = await page.screenshot(**kwargs)
+        return screenshot
+    finally:
+        await context.close()

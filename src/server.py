@@ -32,7 +32,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # project root (peek/)
 CAPTURES_DIR = BASE_DIR / "captures"
@@ -52,8 +57,8 @@ async def playwright_screenshot(url, viewport=None, scroll=None, clip=None):
     """Take a screenshot via Playwright headless Chromium."""
     vp_w = viewport.get("width", 1280) if viewport else 1280
     vp_h = viewport.get("height", 800) if viewport else 800
-    scroll_x = scroll.get("x", 0) if scroll else 0
-    scroll_y = scroll.get("y", 0) if scroll else 0
+    scroll_x = int(scroll.get("x", 0)) if scroll else 0
+    scroll_y = int(scroll.get("y", 0)) if scroll else 0
     return await take_screenshot(
         browser, url,
         scroll_x=scroll_x, scroll_y=scroll_y, width=vp_w, height=vp_h,
@@ -178,4 +183,4 @@ async def latest_capture():
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8899)
+    uvicorn.run(app, host="127.0.0.1", port=8899)

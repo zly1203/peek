@@ -163,7 +163,7 @@ def _run_bridge_server(host: str, port: int):
         loop.close()
 
 
-def run(host: str = "0.0.0.0", port: int = 8899):
+def run(host: str = "127.0.0.1", port: int = 8899):
     """Start the MCP server (stdio) with embedded Bridge Server."""
     # Start bridge in background thread
     bridge_thread = threading.Thread(

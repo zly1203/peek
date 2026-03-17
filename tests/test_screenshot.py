@@ -4,7 +4,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
-from src.screenshot import take_screenshot
+from src.screenshot import take_screenshot, validate_url
 
 
 @pytest.fixture
@@ -56,7 +56,7 @@ async def test_take_screenshot_with_scroll(mock_browser):
 
     await take_screenshot(browser, "http://localhost:3000", scroll_x=100, scroll_y=500)
 
-    page.evaluate.assert_called_once_with("window.scrollTo(100, 500)")
+    page.evaluate.assert_called_once_with("([x, y]) => window.scrollTo(x, y)", [100, 500])
 
 
 @pytest.mark.asyncio
@@ -102,3 +102,46 @@ async def test_take_screenshot_context_closed_on_success(mock_browser):
     await take_screenshot(browser, "http://localhost:3000")
 
     context.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_take_screenshot_context_closed_on_error(mock_browser):
+    """Context is closed even when screenshot fails."""
+    browser, context, page = mock_browser
+    page.screenshot = AsyncMock(side_effect=Exception("screenshot failed"))
+
+    with pytest.raises(Exception, match="screenshot failed"):
+        await take_screenshot(browser, "http://localhost:3000")
+
+    context.close.assert_called_once()
+
+
+# ─── URL validation tests ───
+
+def test_validate_url_localhost():
+    """Accepts localhost URLs."""
+    assert validate_url("http://localhost:3000") == "http://localhost:3000"
+    assert validate_url("http://127.0.0.1:8080") == "http://127.0.0.1:8080"
+    assert validate_url("https://localhost:443/path") == "https://localhost:443/path"
+
+
+def test_validate_url_rejects_external():
+    """Rejects non-localhost URLs."""
+    with pytest.raises(ValueError, match="must be localhost"):
+        validate_url("http://example.com")
+    with pytest.raises(ValueError, match="must be localhost"):
+        validate_url("http://192.168.1.1/admin")
+    with pytest.raises(ValueError, match="must be localhost"):
+        validate_url("http://169.254.169.254/latest/meta-data/")
+
+
+def test_validate_url_rejects_file_scheme():
+    """Rejects file:// URLs."""
+    with pytest.raises(ValueError, match="Unsupported URL scheme"):
+        validate_url("file:///etc/passwd")
+
+
+def test_validate_url_rejects_javascript():
+    """Rejects javascript: URLs."""
+    with pytest.raises(ValueError, match="Unsupported URL scheme"):
+        validate_url("javascript:alert(1)")
