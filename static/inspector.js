@@ -63,6 +63,19 @@
     };
   }
 
+  // ─── Utility: safe URL (strip query params to avoid leaking tokens) ───
+  function safeUrl() {
+    return location.origin + location.pathname;
+  }
+
+  // ─── Utility: sanitize outerHTML (redact sensitive form values) ───
+  function sanitizeOuterHTML(el) {
+    const clone = el.cloneNode(true);
+    clone.querySelectorAll('input[type="password"]').forEach(inp => inp.removeAttribute("value"));
+    clone.querySelectorAll('input[type="hidden"]').forEach(inp => inp.setAttribute("value", "[REDACTED]"));
+    return clone.outerHTML.slice(0, 2000);
+  }
+
   // ─── Utility: get elements in a rect ───
   function getElementsInRect(rect) {
     const results = [];
@@ -425,7 +438,7 @@
 
     await sendCapture({
       mode: "annotate",
-      url: location.href,
+      url: safeUrl(),
       viewport: { width: w, height: window.innerHeight },
       scroll: { x: savedScroll.x, y: savedScroll.y },
       annotationBounds: {
@@ -526,7 +539,7 @@
 
     await sendCapture({
       mode: "region",
-      url: location.href,
+      url: safeUrl(),
       viewport: { width: window.innerWidth, height: window.innerHeight },
       scroll: { x: window.scrollX, y: window.scrollY },
       region: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) },
@@ -569,7 +582,7 @@
 
     await sendCapture({
       mode: "element",
-      url: location.href,
+      url: safeUrl(),
       viewport: { width: window.innerWidth, height: window.innerHeight },
       scroll: { x: window.scrollX, y: window.scrollY },
       region: { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) },
@@ -579,7 +592,7 @@
         classes: Array.from(el.classList).filter(c => !c.startsWith(NS)),
         id: el.id || "",
         text: (el.textContent || "").trim().slice(0, 500),
-        outerHTML: el.outerHTML.slice(0, 2000),
+        outerHTML: sanitizeOuterHTML(el),
         boundingBox: { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) },
         styles: getKeyStyles(el),
       }],
