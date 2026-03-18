@@ -9,6 +9,7 @@ data flows in while MCP serves Claude Code.
 """
 
 import sys
+import os
 import json
 import base64
 import asyncio
@@ -26,7 +27,7 @@ logging.basicConfig(level=logging.INFO, stream=sys.stderr)
 logger = logging.getLogger("peek")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-CAPTURES_DIR = BASE_DIR / "captures"
+CAPTURES_DIR = Path(os.environ.get("PEEK_CAPTURES_DIR", str(BASE_DIR / "captures")))
 CAPTURES_DIR.mkdir(exist_ok=True)
 
 # ─── MCP Server ───

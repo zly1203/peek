@@ -2,6 +2,7 @@
 Uses Playwright for reliable server-side screenshots."""
 
 import json
+import os
 import base64
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -51,7 +52,7 @@ async def limit_body_size(request: Request, call_next):
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # project root (peek/)
-CAPTURES_DIR = BASE_DIR / "captures"
+CAPTURES_DIR = Path(os.environ.get("PEEK_CAPTURES_DIR", str(BASE_DIR / "captures")))
 STATIC_DIR = BASE_DIR / "static"
 CAPTURES_DIR.mkdir(exist_ok=True)
 

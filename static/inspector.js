@@ -7,7 +7,7 @@
   if (window.__inspectorActive) return;
   window.__inspectorActive = true;
 
-  const BRIDGE = "http://localhost:8899";
+  const BRIDGE = window.__PEEK_BRIDGE_URL || "http://localhost:8899";
   const NS = "__uiinsp_"; // namespace prefix for all injected elements
 
   // ─── State ───
