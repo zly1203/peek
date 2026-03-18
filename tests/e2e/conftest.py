@@ -133,7 +133,7 @@ def clean_captures(_captures_tmpdir):
 # ─── Playwright browser (test-side, for bookmarklet automation) ───
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def pw_browser():
     """Real Playwright Chromium for test automation."""
     pw = await async_playwright().start()
@@ -143,7 +143,7 @@ async def pw_browser():
     await pw.stop()
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def pw_page(pw_browser):
     """Fresh Playwright page per test."""
     context = await pw_browser.new_context(viewport={"width": 1280, "height": 800})
