@@ -12,7 +12,7 @@
 
   // ─── State ───
   let mode = null; // 'region' | 'select' | 'annotate' | null
-  let overlay, toolbar, highlightBox, regionBox, canvas, canvasCtx;
+  let overlay, toolbar, highlightBox, regionBox, canvas, canvasCtx, sendBar;
   let regionStart = null;
   let drawing = false;
   let savedScroll = { x: 0, y: 0 }; // saved scroll position for annotate mode
@@ -20,6 +20,7 @@
   let annotateTool = "freehand"; // 'freehand' | 'rect' | 'arrow'
   let annotateShapes = [];
   let annotateCurrentShape = null;
+  let pendingCapture = null; // staged capture data waiting for Send
 
   // ─── Utility: CSS selector for element ───
   function getSelector(el) {
@@ -220,6 +221,59 @@
       display: "none",
     });
     document.body.appendChild(regionBox);
+  }
+
+  // ─── Send bar (shared by region + element modes) ───
+  function createSendBar() {
+    sendBar = document.createElement("div");
+    sendBar.id = NS + "sendbar";
+    Object.assign(sendBar.style, {
+      position: "fixed", bottom: "24px", left: "50%", transform: "translateX(-50%)",
+      background: "rgba(15,23,42,0.9)", borderRadius: "8px", padding: "6px 12px",
+      display: "none", gap: "8px", alignItems: "center", zIndex: "2147483647",
+      fontFamily: "-apple-system, system-ui, sans-serif",
+    });
+
+    const hint = document.createElement("span");
+    hint.id = NS + "sendbar_hint";
+    Object.assign(hint.style, { color: "rgba(255,255,255,0.6)", fontSize: "12px" });
+    hint.textContent = "Select something first";
+
+    const sendBtn = document.createElement("button");
+    sendBtn.textContent = "Send";
+    sendBtn.id = NS + "sendbar_btn";
+    Object.assign(sendBtn.style, {
+      padding: "4px 16px", border: "none", borderRadius: "4px",
+      color: "white", fontSize: "12px", cursor: "pointer",
+      background: "#22c55e", display: "none",
+    });
+    sendBtn.addEventListener("click", sendPendingCapture);
+
+    sendBar.append(hint, sendBtn);
+    document.body.appendChild(sendBar);
+  }
+
+  function showSendBar(hintText) {
+    if (!sendBar) return;
+    const hint = document.getElementById(NS + "sendbar_hint");
+    const btn = document.getElementById(NS + "sendbar_btn");
+    hint.textContent = hintText;
+    btn.style.display = "inline-block";
+    sendBar.style.display = "flex";
+  }
+
+  async function sendPendingCapture() {
+    if (!pendingCapture) return;
+    await sendCapture(pendingCapture);
+    pendingCapture = null;
+    // Hide send button, show hint
+    const hint = document.getElementById(NS + "sendbar_hint");
+    const btn = document.getElementById(NS + "sendbar_btn");
+    if (hint) hint.textContent = "Sent! Select again or press Esc";
+    if (btn) btn.style.display = "none";
+    // Reset visual state
+    if (regionBox) { regionBox.style.display = "none"; regionBox.style.borderColor = "#3b82f6"; }
+    if (highlightBox) { highlightBox.style.borderColor = "#3b82f6"; }
   }
 
   // ─── Annotation canvas ───
@@ -468,6 +522,7 @@
     if (mode === "region") {
       createOverlay();
       createRegionBox();
+      createSendBar();
       overlay.style.cursor = "crosshair";
       overlay.addEventListener("mousedown", regionMouseDown);
       overlay.addEventListener("mousemove", regionMouseMove);
@@ -475,6 +530,7 @@
     } else if (mode === "select") {
       createOverlay();
       createHighlightBox();
+      createSendBar();
       overlay.style.cursor = "default";
       overlay.addEventListener("mousemove", selectMouseMove);
       overlay.addEventListener("click", selectClick);
@@ -488,9 +544,11 @@
     highlightBox?.remove(); highlightBox = null;
     regionBox?.remove(); regionBox = null;
     canvas?.remove(); canvas = null;
+    sendBar?.remove(); sendBar = null;
     document.getElementById(NS + "subtoolbar")?.remove();
     regionStart = null;
     drawing = false;
+    pendingCapture = null;
     // Restore scrolling when leaving annotate mode
     if (window.__peekPreventScroll) {
       window.removeEventListener("wheel", window.__peekPreventScroll);
@@ -521,7 +579,7 @@
     regionBox.style.height = h + "px";
   }
 
-  async function regionMouseUp(e) {
+  function regionMouseUp(e) {
     if (!regionStart) return;
     const rect = {
       x: Math.min(regionStart.x, e.clientX),
@@ -536,21 +594,21 @@
       return;
     }
 
-    // Brief visual feedback
+    // Visual feedback — keep box visible
     regionBox.style.borderColor = "#22c55e";
 
     const elements = getElementsInRect(rect);
 
-    await sendCapture({
+    // Stage capture data, don't send yet
+    pendingCapture = {
       mode: "region",
       url: safeUrl(),
       viewport: { width: window.innerWidth, height: window.innerHeight },
       scroll: { x: window.scrollX, y: window.scrollY },
       region: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) },
       elements,
-    });
-
-    regionBox.style.display = "none";
+    };
+    showSendBar(`Region: ${elements.length} element${elements.length !== 1 ? "s" : ""} — re-drag to adjust`);
   }
 
   // ─── Element select handlers ───
@@ -577,14 +635,15 @@
     highlightBox.style.height = r.height + "px";
   }
 
-  async function selectClick(e) {
+  function selectClick(e) {
     if (!lastHoveredEl) return;
     const el = lastHoveredEl;
     const r = el.getBoundingClientRect();
 
     highlightBox.style.borderColor = "#22c55e";
 
-    await sendCapture({
+    // Stage capture data, don't send yet
+    pendingCapture = {
       mode: "element",
       url: safeUrl(),
       viewport: { width: window.innerWidth, height: window.innerHeight },
@@ -600,9 +659,10 @@
         boundingBox: { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) },
         styles: getKeyStyles(el),
       }],
-    });
-
-    highlightBox.style.borderColor = "#3b82f6";
+    };
+    const tag = el.tagName.toLowerCase();
+    const id = el.id ? `#${el.id}` : "";
+    showSendBar(`Element: <${tag}${id}> — click another to change`);
   }
 
   // ─── Keyboard shortcuts ───

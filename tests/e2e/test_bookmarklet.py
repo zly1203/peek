@@ -21,6 +21,12 @@ async def _inject_and_wait(page, port):
     await page.wait_for_selector("[id^='__uiinsp_toolbar']", timeout=5000)
 
 
+async def _click_send(page):
+    """Click the Send button in the send bar (region/element modes)."""
+    send_btn = await page.wait_for_selector("[id^='__uiinsp_sendbar_btn']", timeout=3000)
+    await send_btn.click()
+
+
 # ─── Initialization & UI (4) ───
 
 
@@ -131,6 +137,7 @@ async def test_element_click_title_sends_capture(
     await pw_page.mouse.move(cx, cy)
     await asyncio.sleep(0.3)
     await pw_page.mouse.click(cx, cy)
+    await _click_send(pw_page)
 
     base_url, _ = bridge_server
     data = await wait_for_capture(base_url)
@@ -156,6 +163,7 @@ async def test_element_click_button_selector(
     await pw_page.mouse.move(cx, cy)
     await asyncio.sleep(0.3)
     await pw_page.mouse.click(cx, cy)
+    await _click_send(pw_page)
 
     base_url, _ = bridge_server
     data = await wait_for_capture(base_url)
@@ -179,6 +187,7 @@ async def test_element_click_nested_link(
     await pw_page.mouse.move(cx, cy)
     await asyncio.sleep(0.3)
     await pw_page.mouse.click(cx, cy)
+    await _click_send(pw_page)
 
     base_url, _ = bridge_server
     data = await wait_for_capture(base_url)
@@ -202,6 +211,7 @@ async def test_element_capture_includes_outerhtml(
     await pw_page.mouse.move(cx, cy)
     await asyncio.sleep(0.3)
     await pw_page.mouse.click(cx, cy)
+    await _click_send(pw_page)
 
     base_url, _ = bridge_server
     data = await wait_for_capture(base_url)
@@ -226,6 +236,7 @@ async def test_element_capture_includes_styles(
     await pw_page.mouse.move(cx, cy)
     await asyncio.sleep(0.3)
     await pw_page.mouse.click(cx, cy)
+    await _click_send(pw_page)
 
     base_url, _ = bridge_server
     data = await wait_for_capture(base_url)
@@ -281,6 +292,7 @@ async def test_region_drag_sends_capture(
     await pw_page.mouse.down()
     await pw_page.mouse.move(350, 260, steps=5)
     await pw_page.mouse.up()
+    await _click_send(pw_page)
 
     base_url, _ = bridge_server
     data = await wait_for_capture(base_url)
@@ -315,6 +327,7 @@ async def test_region_captures_red_box(
     await pw_page.mouse.down()
     await pw_page.mouse.move(end_x, end_y, steps=5)
     await pw_page.mouse.up()
+    await _click_send(pw_page)
 
     base_url, _ = bridge_server
     data = await wait_for_capture(base_url)
@@ -342,6 +355,7 @@ async def test_region_empty_area(
     await pw_page.mouse.down()
     await pw_page.mouse.move(800, 700, steps=5)
     await pw_page.mouse.up()
+    await _click_send(pw_page)
 
     base_url, _ = bridge_server
     data = await wait_for_capture(base_url)
@@ -604,6 +618,7 @@ async def test_safe_url_strips_query_params(
     await pw_page.mouse.move(cx, cy)
     await asyncio.sleep(0.3)
     await pw_page.mouse.click(cx, cy)
+    await _click_send(pw_page)
 
     base_url, _ = bridge_server
     data = await wait_for_capture(base_url)
