@@ -228,12 +228,13 @@
     const w = window.innerWidth;
     const h = window.innerHeight - 40;
 
-    // Save scroll position BEFORE freezing
+    // Save scroll position and prevent scrolling without layout shift
     savedScroll = { x: window.scrollX, y: window.scrollY };
-    // Freeze scrolling without jumping
-    document.documentElement.style.overflow = "hidden";
-    document.body.style.overflow = "hidden";
-    window.scrollTo(savedScroll.x, savedScroll.y);
+    window.__peekPreventScroll = (e) => {
+      e.preventDefault();
+    };
+    window.addEventListener("wheel", window.__peekPreventScroll, { passive: false });
+    window.addEventListener("touchmove", window.__peekPreventScroll, { passive: false });
 
     // Transparent canvas overlay — user draws on top of the live page
     canvas = document.createElement("canvas");
@@ -491,8 +492,11 @@
     regionStart = null;
     drawing = false;
     // Restore scrolling when leaving annotate mode
-    document.documentElement.style.overflow = "";
-    document.body.style.overflow = "";
+    if (window.__peekPreventScroll) {
+      window.removeEventListener("wheel", window.__peekPreventScroll);
+      window.removeEventListener("touchmove", window.__peekPreventScroll);
+      delete window.__peekPreventScroll;
+    }
   }
 
   // ─── Region select handlers ───
