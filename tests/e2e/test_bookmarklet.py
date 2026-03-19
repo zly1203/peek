@@ -416,6 +416,102 @@ async def test_annotate_draw_and_send(
     assert "annotationOverlay" in data
 
 
+async def test_annotate_rect_tool(
+    pw_page, test_page_server, bridge_server, bridge_port
+):
+    """Switch to Rect tool, draw rectangle, Send -> capture has annotationBounds."""
+    await pw_page.goto(test_page_server)
+    await _inject_and_wait(pw_page, bridge_port)
+
+    await pw_page.keyboard.press("Alt+a")
+    await asyncio.sleep(0.3)
+
+    # Click Rect button in subtoolbar (second button: Pen, Rect, Arrow, Send)
+    buttons = await pw_page.query_selector_all(
+        "[id^='__uiinsp_subtoolbar'] button"
+    )
+    await buttons[1].click()  # Rect
+    await asyncio.sleep(0.2)
+
+    # Draw a rectangle
+    await pw_page.mouse.move(150, 150)
+    await pw_page.mouse.down()
+    await pw_page.mouse.move(350, 300, steps=5)
+    await pw_page.mouse.up()
+    await asyncio.sleep(0.2)
+
+    # Verify canvas has drawn pixels
+    has_pixels = await pw_page.evaluate("""() => {
+        const c = document.querySelector('[id^="__uiinsp_canvas"]');
+        if (!c) return false;
+        const ctx = c.getContext('2d');
+        const data = ctx.getImageData(0, 0, c.width, c.height).data;
+        for (let i = 3; i < data.length; i += 4) { if (data[i] > 10) return true; }
+        return false;
+    }""")
+    assert has_pixels is True
+
+    # Click Send
+    send_btn = await pw_page.query_selector(
+        "[id^='__uiinsp_subtoolbar'] button:last-child"
+    )
+    await send_btn.click()
+
+    base_url, _ = bridge_server
+    data = await wait_for_capture(base_url)
+    assert data["mode"] == "annotate"
+    assert data["annotationBounds"]["width"] > 0
+    assert data["annotationBounds"]["height"] > 0
+
+
+async def test_annotate_arrow_tool(
+    pw_page, test_page_server, bridge_server, bridge_port
+):
+    """Switch to Arrow tool, draw arrow, Send -> capture has annotationBounds."""
+    await pw_page.goto(test_page_server)
+    await _inject_and_wait(pw_page, bridge_port)
+
+    await pw_page.keyboard.press("Alt+a")
+    await asyncio.sleep(0.3)
+
+    # Click Arrow button in subtoolbar (third button: Pen, Rect, Arrow, Send)
+    buttons = await pw_page.query_selector_all(
+        "[id^='__uiinsp_subtoolbar'] button"
+    )
+    await buttons[2].click()  # Arrow
+    await asyncio.sleep(0.2)
+
+    # Draw an arrow
+    await pw_page.mouse.move(200, 200)
+    await pw_page.mouse.down()
+    await pw_page.mouse.move(400, 350, steps=5)
+    await pw_page.mouse.up()
+    await asyncio.sleep(0.2)
+
+    # Verify canvas has drawn pixels
+    has_pixels = await pw_page.evaluate("""() => {
+        const c = document.querySelector('[id^="__uiinsp_canvas"]');
+        if (!c) return false;
+        const ctx = c.getContext('2d');
+        const data = ctx.getImageData(0, 0, c.width, c.height).data;
+        for (let i = 3; i < data.length; i += 4) { if (data[i] > 10) return true; }
+        return false;
+    }""")
+    assert has_pixels is True
+
+    # Click Send
+    send_btn = await pw_page.query_selector(
+        "[id^='__uiinsp_subtoolbar'] button:last-child"
+    )
+    await send_btn.click()
+
+    base_url, _ = bridge_server
+    data = await wait_for_capture(base_url)
+    assert data["mode"] == "annotate"
+    assert data["annotationBounds"]["width"] > 0
+    assert data["annotationBounds"]["height"] > 0
+
+
 # ─── Keyboard shortcuts (3) ───
 
 
