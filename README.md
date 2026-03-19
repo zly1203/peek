@@ -11,7 +11,7 @@ Peek fixes this. Click a bookmarklet, point at something, and your AI agent inst
 ## Quick Start
 
 ```bash
-pip install peek
+pip install peek-mcp
 playwright install chromium   # headless browser for screenshots (~150MB, one-time)
 ```
 
