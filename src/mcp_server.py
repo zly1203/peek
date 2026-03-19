@@ -27,8 +27,8 @@ logging.basicConfig(level=logging.INFO, stream=sys.stderr)
 logger = logging.getLogger("peek")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-CAPTURES_DIR = Path(os.environ.get("PEEK_CAPTURES_DIR", str(BASE_DIR / "captures")))
-CAPTURES_DIR.mkdir(exist_ok=True)
+CAPTURES_DIR = Path(os.environ.get("PEEK_CAPTURES_DIR", str(Path.home() / ".peek" / "captures")))
+CAPTURES_DIR.mkdir(parents=True, exist_ok=True)
 
 # ─── MCP Server ───
 

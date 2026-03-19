@@ -51,10 +51,10 @@ async def limit_body_size(request: Request, call_next):
     return await call_next(request)
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent  # project root (peek/)
-CAPTURES_DIR = Path(os.environ.get("PEEK_CAPTURES_DIR", str(BASE_DIR / "captures")))
+BASE_DIR = Path(__file__).resolve().parent.parent  # package root
+CAPTURES_DIR = Path(os.environ.get("PEEK_CAPTURES_DIR", str(Path.home() / ".peek" / "captures")))
 STATIC_DIR = BASE_DIR / "static"
-CAPTURES_DIR.mkdir(exist_ok=True)
+CAPTURES_DIR.mkdir(parents=True, exist_ok=True)
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 app.mount("/captures", StaticFiles(directory=str(CAPTURES_DIR)), name="captures")
