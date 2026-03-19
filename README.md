@@ -58,7 +58,17 @@ Then start Peek and grab the bookmarklet:
 peek mcp
 ```
 
-Open http://localhost:8899, drag the blue button to your bookmark bar. That's it.
+Open http://localhost:8899, drag the blue button to your bookmark bar.
+
+**Recommended:** Add this to your project's `CLAUDE.md` (or `.cursorrules`, etc.) so the agent knows your dev server port and uses Peek correctly:
+
+```
+Dev server runs on http://localhost:3000
+
+When using Peek's screenshot tool and you don't know the dev server URL, ask me which port the app is running on before taking a screenshot.
+```
+
+That's it.
 
 ## Usage
 
@@ -102,19 +112,7 @@ peek mcp --port 9000      # different bridge port
 
 ## Tips
 
-**Help your agent find your dev server.** The `screenshot(url)` tool needs to know where your app is running. Add this to your project instructions (`CLAUDE.md`, `.cursorrules`, etc.):
-
-```
-Dev server runs on http://localhost:3000
-```
-
-Or just tell the agent the port in conversation. To make it always ask when it doesn't know:
-
-```
-When using Peek's screenshot tool and you don't know the dev server URL, ask me which port the app is running on before taking a screenshot.
-```
-
-**Multiple localhost servers?** If you have several apps running, the agent may screenshot the wrong one. Adding the port to your project instructions (see above) prevents this.
+**Agent screenshots the wrong port?** Make sure you added the `CLAUDE.md` snippet from Quick Start. If you have multiple localhost servers, the agent will guess wrong without it.
 
 **Bookmarklet not working?** Delete it from your bookmark bar and re-drag from http://localhost:8899.
 
