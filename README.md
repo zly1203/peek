@@ -112,6 +112,10 @@ Or just tell the agent the port in conversation. To make it always ask when it d
 When using Peek's screenshot tool and you don't know the dev server URL, ask me which port the app is running on before taking a screenshot.
 ```
 
+**Multiple localhost servers?** If you have several apps running, the agent may screenshot the wrong one. Adding the port to your project instructions (see above) prevents this.
+
+**Bookmarklet not working?** Delete it from your bookmark bar and re-drag from http://localhost:8899.
+
 ## Limitations
 
 - **Localhost only.** Bookmarklet and screenshots work with `localhost` and `127.0.0.1`.
