@@ -70,7 +70,9 @@ Open any localhost page. Click the bookmarklet. Pick a mode:
 | **Element** | `Alt+S` | Click an element | Screenshot + selector, styles, HTML |
 | **Annotate** | `Alt+A` | Draw (pen, box, arrow) | Screenshot + your drawings + elements |
 
-Then just tell your agent what to change. It already has the context.
+After selecting, tell your agent to look — something like "I captured the button, take a look" or "check what I just selected". The agent will call `get_latest_capture()` and see your screenshot + element data.
+
+Your agent can also take screenshots on its own — just ask "screenshot localhost:3000" or "take a look at the page". No bookmarklet needed for this; the agent calls `screenshot(url)` directly.
 
 ## How It Works
 
