@@ -176,7 +176,7 @@
     }
 
     const regionBtn = makeBtn("Region", "Alt+R", () => setMode("region"));
-    const selectBtn = makeBtn("Select", "Alt+S", () => setMode("select"));
+    const selectBtn = makeBtn("Element", "Alt+S", () => setMode("select"));
     const annotateBtn = makeBtn("Annotate", "Alt+A", () => setMode("annotate"));
 
     const closeBtn = document.createElement("button");
@@ -184,7 +184,7 @@
     Object.assign(closeBtn.style, { ...btnStyle, marginLeft: "12px", color: "#f87171" });
     closeBtn.addEventListener("click", destroy);
 
-    toolbar.append(regionBtn, selectBtn, annotateBtn, closeBtn);
+    toolbar.append(annotateBtn, regionBtn, selectBtn, closeBtn);
     document.body.appendChild(toolbar);
   }
 
