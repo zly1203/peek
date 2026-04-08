@@ -43,9 +43,16 @@ async def _ensure_browser():
     """Lazily start Playwright browser on first tool call."""
     global _pw, _browser
     if _browser is None:
-        _pw = await async_playwright().start()
-        _browser = await _pw.chromium.launch(headless=True)
-        logger.info("Playwright Chromium launched (MCP)")
+        try:
+            _pw = await async_playwright().start()
+            _browser = await _pw.chromium.launch(headless=True)
+            logger.info("Playwright Chromium launched (MCP)")
+        except Exception as e:
+            if "Executable doesn't exist" in str(e) or "browserType.launch" in str(e):
+                raise RuntimeError(
+                    "Playwright Chromium is not installed. Run: playwright install chromium"
+                ) from e
+            raise
     return _browser
 
 

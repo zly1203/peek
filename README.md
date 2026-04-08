@@ -4,28 +4,38 @@ Point at your UI. Your AI agent sees it.
 
 ## Why
 
-AI coding agents can edit code, but they can't see your page. You end up describing layouts in words, copy-pasting HTML, or dragging screenshots into chat. It works, but it's tedious.
+AI coding agents can edit code, but they can't see your page. You end up describing layouts in words, copy-pasting HTML, or dragging screenshots into chat.
 
-Peek fixes this. Click a bookmarklet, point at something, and your AI agent instantly gets a screenshot plus the element data (selectors, styles, bounding boxes). You point, it sees.
+Peek fixes this. Your AI agent can screenshot any local page on its own. You can also point at specific elements with a bookmarklet, and the agent gets the screenshot plus element data (selectors, styles, bounding boxes).
 
 ## Quick Start
 
+### 1. Install
+
 ```bash
 pip install peek-mcp
-playwright install chromium   # headless browser for screenshots (~150MB, one-time)
+playwright install chromium   # required: headless browser for screenshots (~150 MB, one-time)
 ```
 
-Add Peek to your MCP client (one-time):
-
-<details>
-<summary><b>Claude Code</b></summary>
+Verify it works:
 
 ```bash
-# Current project only
-claude mcp add peek -- $(which peek) mcp
+peek mcp
+# You should see: "Bridge server running on http://localhost:8899"
+# Press Ctrl+C to stop
+```
 
-# Or, all projects (global)
+### 2. Connect to your AI tool
+
+<details>
+<summary><b>Claude Code (CLI or VS Code)</b></summary>
+
+```bash
+# All projects (recommended)
 claude mcp add -s user peek -- $(which peek) mcp
+
+# Or current project only
+claude mcp add peek -- $(which peek) mcp
 ```
 
 > `$(which peek)` resolves to an absolute path, so the MCP server starts correctly even when a project uses a different Python environment.
@@ -52,15 +62,9 @@ Run `which peek` in your terminal to get the absolute path.
 
 </details>
 
-Then start Peek and grab the bookmarklet:
+### 3. Tell your agent where your dev server runs
 
-```bash
-peek mcp
-```
-
-Open http://localhost:8899, drag the blue button to your bookmark bar.
-
-**Recommended:** Add this to your project's `CLAUDE.md` (or `.cursorrules`, etc.) so the agent knows your dev server port and uses Peek correctly:
+Add this to your project's `CLAUDE.md` (or `.cursorrules`, etc.):
 
 ```
 Dev server runs on http://localhost:3000
@@ -68,11 +72,19 @@ Dev server runs on http://localhost:3000
 When using Peek's screenshot tool and you don't know the dev server URL, ask me which port the app is running on before taking a screenshot.
 ```
 
-That's it.
+Replace `3000` with your actual port. **This step prevents your agent from guessing the wrong port.**
 
-## Usage
+### 4. Use it
 
-Open any localhost page. Click the bookmarklet. Pick a mode:
+**Agent-driven screenshots (no bookmarklet needed):**
+
+Just ask your agent — "screenshot the page", "take a look at localhost:3000", "check if the button looks right". The agent calls `screenshot(url)` directly.
+
+**User-pointed captures (bookmarklet):**
+
+1. Run `peek mcp` (or let your AI tool start it via MCP)
+2. Open http://localhost:8899, drag the blue button to your bookmark bar
+3. Open your app, click the bookmarklet, pick a mode:
 
 | Mode | Shortcut | You do | Agent gets |
 |------|----------|--------|------------|
@@ -80,28 +92,76 @@ Open any localhost page. Click the bookmarklet. Pick a mode:
 | **Element** | `Alt+S` | Click an element | Screenshot + selector, styles, HTML |
 | **Annotate** | `Alt+A` | Draw (pen, box, arrow) | Screenshot + your drawings + elements |
 
-After selecting, tell your agent to look — something like "I captured the button, take a look" or "check what I just selected". The agent will call `get_latest_capture()` and see your screenshot + element data.
+4. Tell your agent: "check what I just selected" — it calls `get_latest_capture()`
 
-Your agent can also take screenshots on its own — just ask "screenshot localhost:3000" or "take a look at the page". No bookmarklet needed for this; the agent calls `screenshot(url)` directly.
+## Supported URLs
 
-## How It Works
+Peek works with local and LAN addresses:
 
-```
-You select something with the bookmarklet
-    → Peek grabs the element data, sends it to the local bridge server
-    → Bridge server takes a Playwright screenshot of the page
-    → Your AI agent calls get_latest_capture() and sees everything
-    → "The chart legend overlaps the bars. Fixing the CSS..."
-```
-
-One process, two jobs: MCP server talks to your AI agent over stdio, bridge server receives bookmarklet data on port 8899. `peek mcp` runs both.
+| URL | Supported |
+|-----|-----------|
+| `http://localhost:3000` | Yes |
+| `http://127.0.0.1:8080` | Yes |
+| `http://0.0.0.0:5000` | Yes |
+| `http://192.168.1.5:3000` | Yes (LAN) |
+| `http://myapp.local:3000` | Yes (.local domain) |
+| `http://myapp.test:8080` | Yes (.test domain) |
+| `https://google.com` | No (public URLs blocked) |
 
 ## MCP Tools
 
 | Tool | What it does |
 |------|-------------|
-| `get_latest_capture()` | Returns your latest selection — screenshot + element data |
-| `screenshot(url)` | Takes a fresh screenshot (useful after code changes) |
+| `screenshot(url)` | Takes a screenshot of a local/LAN URL |
+| `get_latest_capture()` | Returns your latest bookmarklet selection — screenshot + element data |
+
+## How It Works
+
+```
+Your AI agent calls screenshot(url)
+    -> Playwright takes a headless screenshot
+    -> Agent sees the page and can reason about the UI
+
+You point at something with the bookmarklet
+    -> Peek grabs element data + takes a Playwright screenshot
+    -> Agent calls get_latest_capture() and sees everything
+    -> "The chart legend overlaps the bars. Fixing the CSS..."
+```
+
+One process, two jobs: MCP server talks to your AI agent over stdio, bridge server receives bookmarklet data on port 8899. `peek mcp` runs both.
+
+## Troubleshooting
+
+**`Playwright Chromium is not installed`**
+
+Run `playwright install chromium`. This downloads the headless browser engine (~150 MB). Only needed once.
+
+**`ERR_CONNECTION_REFUSED` when taking a screenshot**
+
+Your dev server isn't running on that port. Start your dev server first, then ask the agent to screenshot. If you see this repeatedly, make sure the port in your `CLAUDE.md` matches your actual dev server.
+
+**Agent screenshots the wrong port**
+
+Add the `CLAUDE.md` snippet from step 3 above. Without it, the agent will guess.
+
+**Bookmarklet not working**
+
+Delete it from your bookmark bar and re-drag from http://localhost:8899. Make sure `peek mcp` is running.
+
+**`peek: command not found` after pip install**
+
+Your Python scripts directory may not be in your PATH. Try:
+```bash
+python -m peek mcp
+# or find the path:
+pip show peek-mcp | grep Location
+```
+
+## Limitations
+
+- **Local/LAN only.** Public URLs are blocked for security (SSRF prevention).
+- **No auth.** Playwright uses a fresh browser context — no cookies, no login state.
+- **Captures may contain sensitive data.** Passwords and hidden inputs are redacted, but visible text and screenshots are saved as-is to `~/.peek/captures/` (outside your project).
 
 ## CLI
 
@@ -109,18 +169,6 @@ One process, two jobs: MCP server talks to your AI agent over stdio, bridge serv
 peek mcp                  # start everything (recommended)
 peek mcp --port 9000      # different bridge port
 ```
-
-## Tips
-
-**Agent screenshots the wrong port?** Make sure you added the `CLAUDE.md` snippet from Quick Start. If you have multiple localhost servers, the agent will guess wrong without it.
-
-**Bookmarklet not working?** Delete it from your bookmark bar and re-drag from http://localhost:8899.
-
-## Limitations
-
-- **Localhost only.** Bookmarklet and screenshots work with `localhost` and `127.0.0.1`.
-- **No auth.** Playwright uses a fresh browser — no cookies, no login state.
-- **Captures may contain sensitive data.** Passwords and hidden inputs are redacted, but visible text and screenshots are saved as-is to `captures/` (gitignored by default).
 
 ## Requirements
 

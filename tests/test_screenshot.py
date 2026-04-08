@@ -126,13 +126,46 @@ def test_validate_url_localhost():
 
 
 def test_validate_url_rejects_external():
-    """Rejects non-localhost URLs."""
-    with pytest.raises(ValueError, match="must be localhost"):
-        validate_url("http://example.com")
-    with pytest.raises(ValueError, match="must be localhost"):
-        validate_url("http://192.168.1.1/admin")
-    with pytest.raises(ValueError, match="must be localhost"):
+    """Rejects public IPs, public domains, and cloud metadata."""
+    with pytest.raises(ValueError, match="must be localhost or LAN"):
+        validate_url("http://google.com")
+    with pytest.raises(ValueError, match="must be localhost or LAN"):
+        validate_url("http://github.com")
+    with pytest.raises(ValueError, match="must be localhost or LAN"):
+        validate_url("http://sub.amazonaws.com")
+    with pytest.raises(ValueError, match="must be localhost or LAN"):
+        validate_url("http://8.8.8.8")
+    with pytest.raises(ValueError, match="must be localhost or LAN"):
         validate_url("http://169.254.169.254/latest/meta-data/")
+
+
+def test_validate_url_rejects_ssrf_bypasses():
+    """Rejects known SSRF bypass techniques."""
+    # Hex IP encoding
+    with pytest.raises(ValueError, match="must be localhost or LAN"):
+        validate_url("http://0x7f000001:8080")
+    # Octal IP encoding
+    with pytest.raises(ValueError, match="must be localhost or LAN"):
+        validate_url("http://0177.0.0.1:8080")
+    # Subdomain trick (localhost.evil.com resolves to attacker's server)
+    with pytest.raises(ValueError, match="must be localhost or LAN"):
+        validate_url("http://localhost.evil.com")
+    # Userinfo trick (evil.com@localhost)
+    with pytest.raises(ValueError, match="must not contain userinfo"):
+        validate_url("http://evil.com@localhost")
+
+
+def test_validate_url_allows_lan():
+    """Allows LAN IPs and .local/.test/.internal/.localhost domains."""
+    assert validate_url("http://192.168.1.5:3000") == "http://192.168.1.5:3000"
+    assert validate_url("http://10.0.0.1:8080") == "http://10.0.0.1:8080"
+    assert validate_url("http://172.16.0.1:3000") == "http://172.16.0.1:3000"
+    assert validate_url("http://172.31.255.255:3000") == "http://172.31.255.255:3000"
+    assert validate_url("http://myapp.local:3000") == "http://myapp.local:3000"
+    assert validate_url("http://dev.test:8080") == "http://dev.test:8080"
+    assert validate_url("http://myapp.internal:3000") == "http://myapp.internal:3000"
+    assert validate_url("http://myapp.localhost:3000") == "http://myapp.localhost:3000"
+    assert validate_url("http://myserver:3000") == "http://myserver:3000"  # simple hostname
 
 
 def test_validate_url_rejects_file_scheme():

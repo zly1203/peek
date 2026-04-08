@@ -73,28 +73,45 @@ def test_ssrf_bypass_redirect(client):
     from src.screenshot import validate_url
     import pytest
 
-    bypass_attempts = [
-        "http://0x7f000001:8080",       # hex IP for 127.0.0.1
-        "http://[::1]:8080",             # IPv6 localhost (allowed — just verify no crash)
-        "http://localhost.evil.com",     # subdomain trick
-        "http://evil.com@localhost",     # userinfo trick
-        "http://169.254.169.254",       # AWS metadata
-        "http://internal.company.com",  # internal hostname
+    # These must all be REJECTED
+    must_reject = [
+        "http://0x7f000001:8080",       # hex IP for 127.0.0.1 (SSRF bypass)
+        "http://0177.0.0.1:8080",       # octal IP (SSRF bypass)
+        "http://169.254.169.254",       # AWS metadata (link-local)
+        "http://google.com",            # public domain
+        "http://localhost.evil.com",    # subdomain trick
         "ftp://localhost:21",            # non-HTTP scheme
         "gopher://localhost:8080",       # gopher scheme
     ]
 
-    for url in bypass_attempts:
+    for url in must_reject:
         try:
             validate_url(url)
-            # If it passed, it should only be for actual localhost
-            from urllib.parse import urlparse
-            parsed = urlparse(url)
-            assert parsed.hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1"), (
-                f"validate_url allowed non-localhost URL: {url}"
-            )
+            pytest.fail(f"validate_url should reject: {url}")
         except ValueError:
-            pass  # Expected — rejected correctly
+            pass  # Expected
+
+    # Userinfo trick — separate check (different error message)
+    try:
+        validate_url("http://evil.com@localhost")
+        pytest.fail("validate_url should reject userinfo trick")
+    except ValueError:
+        pass
+
+    # These are allowed (legitimate local/LAN addresses)
+    must_allow = [
+        "http://[::1]:8080",             # IPv6 localhost
+        "http://localhost:3000",          # regular localhost
+        "http://192.168.1.5:3000",       # LAN IP
+        "http://10.0.0.1:8080",          # LAN IP
+        "http://172.16.0.1:3000",        # LAN IP
+        "http://myapp.local:8080",       # .local domain
+        "http://dev.test:3000",          # .test domain
+        "http://myapp.internal:3000",    # .internal domain
+    ]
+
+    for url in must_allow:
+        validate_url(url)  # Should not raise
 
 
 # ─── Malicious payloads ───

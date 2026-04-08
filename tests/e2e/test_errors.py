@@ -53,10 +53,11 @@ async def test_post_empty_json(bridge_server):
     async with httpx.AsyncClient() as client:
         resp = await client.post(f"{base_url}/api/capture", json={}, timeout=30)
         # The KeyError on data["url"] is caught by the try/except in receive_capture,
-        # so the endpoint still returns 200 with screenshot=None
+        # so the endpoint still returns 200 with screenshot error info
         assert resp.status_code == 200
         body = resp.json()
-        assert body["status"] == "ok"
+        assert body["status"] == "partial"
+        assert "warning" in body
 
         # Server should still respond after the error
         resp2 = await client.get(f"{base_url}/", timeout=30)

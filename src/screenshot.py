@@ -6,18 +6,50 @@ browser instance in.
 """
 
 import asyncio
+import ipaddress
 from urllib.parse import urlparse
 
-ALLOWED_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
+# Blocked public domains to prevent SSRF to external services
+BLOCKED_PUBLIC_DOMAINS = {"google.com", "github.com", "amazonaws.com"}
+
+
+def _is_local_or_lan(hostname: str) -> bool:
+    """Check if hostname is localhost, LAN, or a local dev domain."""
+    # Explicit localhost variants
+    if hostname in ("localhost", "0.0.0.0", "::1"):
+        return True
+    # Local dev domains (.local, .test, .internal, .localhost)
+    if any(hostname.endswith(suffix) for suffix in (".local", ".test", ".internal", ".localhost")):
+        return True
+    # IP address check — allow private/loopback, reject public and link-local
+    try:
+        addr = ipaddress.ip_address(hostname)
+        if addr.is_link_local:
+            return False  # Block 169.254.x.x (cloud metadata endpoint)
+        return addr.is_private or addr.is_loopback
+    except ValueError:
+        pass
+    # Reject hex/octal IP encoding tricks (SSRF bypass)
+    if hostname.startswith("0x") or hostname.startswith("0o") or hostname.replace(".", "").isdigit():
+        return False
+    # Unknown hostname — only allow if it looks like a local dev name
+    # (contains no dots = simple hostname like "myserver", or is a known safe pattern)
+    if "." not in hostname:
+        return True  # Simple hostname like "myserver" — likely local
+    # Reject everything else (public domains, subdomain tricks like localhost.evil.com)
+    return False
 
 
 def validate_url(url):
-    """Restrict URLs to localhost to prevent SSRF."""
+    """Restrict URLs to local/LAN addresses to prevent SSRF."""
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
         raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
-    if parsed.hostname not in ALLOWED_HOSTS:
-        raise ValueError(f"URL host must be localhost, got: {parsed.hostname}")
+    # Reject userinfo in URL (e.g. http://evil.com@localhost) — SSRF bypass
+    if "@" in (parsed.netloc or ""):
+        raise ValueError(f"URL must not contain userinfo (@), got: {parsed.netloc}")
+    if not _is_local_or_lan(parsed.hostname):
+        raise ValueError(f"URL host must be localhost or LAN address, got: {parsed.hostname}")
     return url
 
 

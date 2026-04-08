@@ -155,7 +155,16 @@ async def receive_capture(request: Request):
         (CAPTURES_DIR / f"capture_{ts}.png").write_bytes(page_png)
         data["screenshot"] = "capture_latest.png"
     except Exception as e:
-        print(f"Playwright screenshot failed: {e}")
+        error_msg = str(e)
+        if "ERR_CONNECTION_REFUSED" in error_msg:
+            print(f"Playwright screenshot failed: could not connect to {data.get('url')} — is the dev server running?")
+            data["screenshot_error"] = f"Connection refused: {data.get('url')} — dev server may not be running"
+        elif "URL host must be" in error_msg:
+            print(f"Playwright screenshot failed: {data.get('url')} is not a local URL")
+            data["screenshot_error"] = f"URL not allowed: only localhost and LAN addresses are supported"
+        else:
+            print(f"Playwright screenshot failed: {e}")
+            data["screenshot_error"] = error_msg
         data["screenshot"] = None
 
     # 3. Save JSON metadata
@@ -163,6 +172,8 @@ async def receive_capture(request: Request):
     (CAPTURES_DIR / "capture_latest.json").write_text(json.dumps(data, indent=2, ensure_ascii=False))
     (CAPTURES_DIR / f"capture_{ts}.json").write_text(json.dumps(data, indent=2, ensure_ascii=False))
 
+    if data.get("screenshot_error"):
+        return {"status": "partial", "timestamp": ts, "warning": data["screenshot_error"]}
     return {"status": "ok", "timestamp": ts}
 
 

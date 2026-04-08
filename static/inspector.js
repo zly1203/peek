@@ -626,6 +626,14 @@
       return;
     }
 
+    // Skip body/html — selecting the whole page is never useful
+    const tag = el.tagName.toLowerCase();
+    if (tag === "body" || tag === "html") {
+      highlightBox.style.display = "none";
+      lastHoveredEl = null;
+      return;
+    }
+
     lastHoveredEl = el;
     const r = el.getBoundingClientRect();
     highlightBox.style.display = "block";
