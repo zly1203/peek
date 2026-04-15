@@ -10,40 +10,21 @@ Peek fixes this. Your AI agent can screenshot any local page on its own. You can
 
 ## Quick Start
 
-### 1. Install
+### Claude Code (CLI or VS Code) — recommended
 
 ```bash
 pip install peek-mcp
-playwright install chromium   # required: headless browser for screenshots (~150 MB, one-time)
+peek setup
 ```
 
-Verify it works:
+`peek setup` does everything for you: installs Playwright Chromium, registers Peek as an MCP server in Claude Code (user scope, all projects), opens the bookmarklet page in your browser. Just drag the blue button to your bookmark bar.
+
+### Other AI tools (Cursor / Windsurf / Claude Desktop)
 
 ```bash
-peek mcp
-# You should see: "Bridge server running on http://localhost:8899"
-# Press Ctrl+C to stop
+pip install peek-mcp
+playwright install chromium   # ~150 MB, one-time
 ```
-
-### 2. Connect to your AI tool
-
-<details>
-<summary><b>Claude Code (CLI or VS Code)</b></summary>
-
-```bash
-# All projects (recommended)
-claude mcp add -s user peek -- $(which peek) mcp
-
-# Or current project only
-claude mcp add peek -- $(which peek) mcp
-```
-
-> `$(which peek)` resolves to an absolute path, so the MCP server starts correctly even when a project uses a different Python environment.
-
-</details>
-
-<details>
-<summary><b>Cursor / Windsurf / Claude Desktop</b></summary>
 
 Add to your MCP config file (e.g. `.cursor/mcp.json`, `~/.codeium/windsurf/mcp_config.json`, or `claude_desktop_config.json`):
 
@@ -58,11 +39,9 @@ Add to your MCP config file (e.g. `.cursor/mcp.json`, `~/.codeium/windsurf/mcp_c
 }
 ```
 
-Run `which peek` in your terminal to get the absolute path.
+Run `which peek` in your terminal to get the absolute path. Then visit http://localhost:8899 to grab the bookmarklet.
 
-</details>
-
-### 3. Tell your agent where your dev server runs
+### Recommended: tell your agent your dev port
 
 Add this to your project's `CLAUDE.md` (or `.cursorrules`, etc.):
 
@@ -72,9 +51,9 @@ Dev server runs on http://localhost:3000
 When using Peek's screenshot tool and you don't know the dev server URL, ask me which port the app is running on before taking a screenshot.
 ```
 
-Replace `3000` with your actual port. **This step prevents your agent from guessing the wrong port.**
+Replace `3000` with your actual port. **This prevents your agent from guessing the wrong port.**
 
-### 4. Use it
+### Use it
 
 **Agent-driven screenshots (no bookmarklet needed):**
 
@@ -113,7 +92,16 @@ Peek works with local and LAN addresses:
 | Tool | What it does |
 |------|-------------|
 | `screenshot(url)` | Takes a screenshot of a local/LAN URL |
-| `get_latest_capture()` | Returns your latest bookmarklet selection — screenshot + element data |
+| `get_latest_capture()` | Returns your latest bookmarklet selection — screenshot + element data + DOM context |
+
+For `Element` mode captures, the agent gets structural context to find the right code:
+
+- **ancestor chain** (`body > main > section.settings > div.flex`)
+- **sibling position** (`2 of 3 <button> siblings`)
+- **nearest heading** (`h2: Settings`)
+- **parent layout** (`flex, row`)
+
+This means when you point at a button, the agent knows *which* button on which section — no guessing.
 
 ## How It Works
 

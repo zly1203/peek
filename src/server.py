@@ -63,6 +63,7 @@ app.mount("/captures", StaticFiles(directory=str(CAPTURES_DIR)), name="captures"
 # ─── Playwright screenshot helper ───
 
 from .screenshot import take_screenshot
+from .redact import redact_capture
 
 
 async def playwright_screenshot(url, viewport=None, scroll=None, clip=None):
@@ -81,7 +82,7 @@ async def playwright_screenshot(url, viewport=None, scroll=None, clip=None):
 # ─── Setup page ───
 
 SETUP_HTML = """<!DOCTYPE html>
-<html lang="zh">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Peek Setup</title>
@@ -98,7 +99,7 @@ SETUP_HTML = """<!DOCTYPE html>
 </head>
 <body>
 <h1>Peek</h1>
-<p>把下面的按钮<b>拖到书签栏</b>，然后在任意 localhost 页面点击即可使用。</p>
+<p><b>Drag the button below to your bookmark bar</b>, then click it on any local dev page.</p>
 
 <p style="text-align:center; margin: 32px 0;">
   <a class="bookmarklet" href="javascript:(function(){if(window.__inspectorLoaded){return}var s=document.createElement('script');s.src='http://localhost:8899/static/inspector.js?t='+Date.now();s.onload=function(){window.__inspectorLoaded=true};document.head.appendChild(s)})()">
@@ -106,17 +107,17 @@ SETUP_HTML = """<!DOCTYPE html>
   </a>
 </p>
 
-<div class="step"><b>Step 1</b> — 保持本服务运行: <code>peek serve</code></div>
-<div class="step"><b>Step 2</b> — 把上面蓝色按钮拖到浏览器书签栏</div>
-<div class="step"><b>Step 3</b> — 打开任意 localhost 页面，点击书签栏的 "Peek"</div>
-<div class="step"><b>Step 4</b> — 使用工具栏选择模式:
+<div class="step"><b>Step 1</b> — Keep this service running: <code>peek mcp</code></div>
+<div class="step"><b>Step 2</b> — Drag the blue "Peek" button above to your browser's bookmark bar</div>
+<div class="step"><b>Step 3</b> — Open any local dev page (localhost, 127.0.0.1, .local, LAN IP, etc.) and click "Peek" in your bookmarks</div>
+<div class="step"><b>Step 4</b> — Pick a mode from the toolbar:
   <ul style="margin:8px 0">
-    <li><span class="keys">Alt+R</span> 区域选择 — 像截图一样拖拽选区</li>
-    <li><span class="keys">Alt+S</span> 元素选择 — 悬停高亮，点击选中</li>
-    <li><span class="keys">Alt+A</span> 标注模式 — 在页面上画画标记</li>
+    <li><span class="keys">Alt+A</span> Annotate — draw on the page (pen, rect, arrow)</li>
+    <li><span class="keys">Alt+R</span> Region — drag a rectangle to capture an area</li>
+    <li><span class="keys">Alt+S</span> Element — hover to highlight, click to select</li>
   </ul>
 </div>
-<div class="step"><b>Step 5</b> — 选择/标注后自动保存，告诉 Claude Code 查看即可</div>
+<div class="step"><b>Step 5</b> — After selecting/annotating, ask your AI agent to <code>get_latest_capture()</code></div>
 </body>
 </html>"""
 
@@ -167,7 +168,8 @@ async def receive_capture(request: Request):
             data["screenshot_error"] = error_msg
         data["screenshot"] = None
 
-    # 3. Save JSON metadata
+    # 3. Redact secrets from text fields, then save JSON metadata
+    data = redact_capture(data)
     data["timestamp"] = ts
     (CAPTURES_DIR / "capture_latest.json").write_text(json.dumps(data, indent=2, ensure_ascii=False))
     (CAPTURES_DIR / f"capture_{ts}.json").write_text(json.dumps(data, indent=2, ensure_ascii=False))

@@ -64,6 +64,120 @@
     };
   }
 
+  // ─── Utility: short element descriptor for ancestor chain ───
+  function describeEl(el) {
+    let s = el.tagName.toLowerCase();
+    if (el.id) return s + "#" + el.id;
+    if (el.className && typeof el.className === "string") {
+      const cls = el.className.trim().split(/\s+/).filter(c => !c.startsWith(NS)).slice(0, 2).join(".");
+      if (cls) s += "." + cls;
+    }
+    return s;
+  }
+
+  // ─── Utility: bounded heading text extraction (max 80 chars, no full subtree alloc) ───
+  function safeHeadingText(headingEl) {
+    let out = "";
+    const MAX = 80;
+    // Walk text nodes only, accumulate up to MAX chars (avoids huge .textContent allocation)
+    const walker = document.createTreeWalker(headingEl, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode()) && out.length < MAX) {
+      const v = node.nodeValue || "";
+      // Take only what we still need to avoid copying massive text nodes
+      out += v.length > MAX - out.length ? v.slice(0, MAX - out.length) : v;
+    }
+    return out.trim().slice(0, MAX);
+  }
+
+  // ─── Utility: get DOM structural context ───
+  function getDOMContext(el) {
+    // Ancestor chain (up to 5 levels)
+    const ancestors = [];
+    let cur = el.parentElement;
+    let depth = 0;
+    while (cur && cur !== document.documentElement && depth < 5) {
+      ancestors.unshift(describeEl(cur));
+      cur = cur.parentElement;
+      depth++;
+    }
+
+    // Sibling position (cap children scan at 200 to bound work on huge parents)
+    let siblingPosition = null;
+    const parent = el.parentElement;
+    if (parent) {
+      const totalChildren = parent.children.length;
+      if (totalChildren > 200) {
+        siblingPosition = "child of large parent (" + totalChildren + " siblings)";
+      } else {
+        const sameTag = Array.from(parent.children).filter(c => c.tagName === el.tagName);
+        if (sameTag.length > 1) {
+          siblingPosition = (sameTag.indexOf(el) + 1) + " of " + sameTag.length + " <" + el.tagName.toLowerCase() + "> siblings";
+        } else {
+          const idx = Array.from(parent.children).indexOf(el) + 1;
+          siblingPosition = "child " + idx + " of " + totalChildren;
+        }
+      }
+    }
+
+    // Nearest heading — bounded walk: max 50 sibling scans, max 10 levels up
+    let nearestHeading = null;
+    cur = el;
+    let levelsWalked = 0;
+    let totalSibsScanned = 0;
+    const MAX_SIBS = 50;
+    const MAX_LEVELS = 10;
+
+    outer: while (cur && cur !== document.body && levelsWalked < MAX_LEVELS) {
+      let sib = cur.previousElementSibling;
+      let sibCount = 0;
+      while (sib && totalSibsScanned < MAX_SIBS) {
+        if (/^H[1-6]$/.test(sib.tagName)) {
+          nearestHeading = sib.tagName.toLowerCase() + ": " + safeHeadingText(sib);
+          break outer;
+        }
+        // Use querySelector but only on small subtrees (skip if sibling has many descendants)
+        if (sib.children.length < 100 && sib.querySelector) {
+          const innerH = sib.querySelector("h1, h2, h3, h4, h5, h6");
+          if (innerH) {
+            nearestHeading = innerH.tagName.toLowerCase() + ": " + safeHeadingText(innerH);
+            break outer;
+          }
+        }
+        sib = sib.previousElementSibling;
+        sibCount++;
+        totalSibsScanned++;
+      }
+      cur = cur.parentElement;
+      levelsWalked++;
+    }
+
+    // Parent layout
+    let parentLayout = null;
+    if (parent) {
+      const pcs = getComputedStyle(parent);
+      const display = pcs.display;
+      if (display.includes("flex")) {
+        parentLayout = "flex, " + pcs.flexDirection;
+      } else if (display.includes("grid")) {
+        parentLayout = "grid";
+      } else if (display) {
+        parentLayout = display;
+      }
+    }
+
+    // Child count (helps know if element is a container or leaf)
+    const childCount = el.children.length;
+
+    return {
+      ancestor_chain: ancestors,
+      sibling_position: siblingPosition,
+      nearest_heading: nearestHeading,
+      parent_layout: parentLayout,
+      child_count: childCount,
+    };
+  }
+
   // ─── Utility: safe URL (strip query params to avoid leaking tokens) ───
   function safeUrl() {
     return location.origin + location.pathname;
@@ -164,10 +278,10 @@
       background: "rgba(255,255,255,0.1)", transition: "background 0.15s",
     };
 
-    function makeBtn(label, shortcut, onClick) {
+    function makeBtn(label, shortcut, modeName, onClick) {
       const btn = document.createElement("button");
       btn.textContent = `${label} (${shortcut})`;
-      btn.dataset.mode = label.toLowerCase();
+      btn.dataset.mode = modeName;
       Object.assign(btn.style, btnStyle);
       btn.addEventListener("click", onClick);
       btn.addEventListener("mouseenter", () => { if (btn.dataset.mode !== mode) btn.style.background = "rgba(255,255,255,0.2)"; });
@@ -175,9 +289,9 @@
       return btn;
     }
 
-    const regionBtn = makeBtn("Region", "Alt+R", () => setMode("region"));
-    const selectBtn = makeBtn("Element", "Alt+S", () => setMode("select"));
-    const annotateBtn = makeBtn("Annotate", "Alt+A", () => setMode("annotate"));
+    const regionBtn = makeBtn("Region", "Alt+R", "region", () => setMode("region"));
+    const selectBtn = makeBtn("Element", "Alt+S", "select", () => setMode("select"));
+    const annotateBtn = makeBtn("Annotate", "Alt+A", "annotate", () => setMode("annotate"));
 
     const closeBtn = document.createElement("button");
     closeBtn.textContent = "✕";
@@ -666,6 +780,7 @@
         outerHTML: sanitizeOuterHTML(el),
         boundingBox: { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) },
         styles: getKeyStyles(el),
+        domContext: getDOMContext(el),
       }],
     };
     const tag = el.tagName.toLowerCase();

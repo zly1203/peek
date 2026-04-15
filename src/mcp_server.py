@@ -180,7 +180,22 @@ def run(host: str = "127.0.0.1", port: int = 8899):
         daemon=True,
     )
     bridge_thread.start()
-    logger.info(f"Bridge server started on {host}:{port}")
+
+    # If launched manually (TTY), show friendly setup instructions.
+    # If launched by an MCP client (no TTY), just log briefly.
+    if sys.stdin.isatty():
+        url = f"http://{host}:{port}"
+        print(
+            f"\n  Peek is running on {url}\n\n"
+            f"  Next steps:\n"
+            f"    1. Open {url} in your browser\n"
+            f"    2. Drag the blue 'Peek' button to your bookmark bar\n"
+            f"    3. Click the bookmarklet on any localhost page to start capturing\n\n"
+            f"  Press Ctrl+C to stop.\n",
+            file=sys.stderr,
+        )
+    else:
+        logger.info(f"Bridge server started on {host}:{port}")
 
     # Run MCP server on main thread (stdio)
     try:
