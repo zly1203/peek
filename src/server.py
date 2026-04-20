@@ -79,6 +79,49 @@ async def playwright_screenshot(url, viewport=None, scroll=None, clip=None):
     )
 
 
+# ─── Capture archive retention ───
+
+MAX_TIMESTAMPED_CAPTURES = 50
+
+
+def _dom_snapshot_enabled() -> bool:
+    """Client-side PNG is the default path. Set PEEK_DOM_SNAPSHOT=0 to force
+    the v0.4 Playwright fallback (useful if modern-screenshot misbehaves on
+    a specific page)."""
+    return os.environ.get("PEEK_DOM_SNAPSHOT", "1") != "0"
+
+
+def _prune_capture_archive(max_captures: int = MAX_TIMESTAMPED_CAPTURES):
+    """Keep at most `max_captures` timestamped capture groups on disk;
+    `capture_latest.*` is always preserved. Silent on errors — cleanup
+    is best-effort."""
+    try:
+        files = list(CAPTURES_DIR.iterdir())
+    except Exception:
+        return
+
+    groups: dict[str, list] = {}
+    for f in files:
+        name = f.name
+        if not name.startswith("capture_") or name.startswith("capture_latest"):
+            continue
+        rest = name[len("capture_"):]
+        if len(rest) < 15:
+            continue
+        ts = rest[:15]
+        # Validate YYYYMMDD_HHMMSS
+        if not (ts[:8].isdigit() and ts[8] == "_" and ts[9:].isdigit()):
+            continue
+        groups.setdefault(ts, []).append(f)
+
+    for ts in sorted(groups.keys(), reverse=True)[max_captures:]:
+        for f in groups[ts]:
+            try:
+                f.unlink()
+            except Exception:
+                pass
+
+
 # ─── Setup page ───
 
 SETUP_HTML = """<!DOCTYPE html>
@@ -143,29 +186,46 @@ async def receive_capture(request: Request):
             data["annotationOverlay"] = "capture_latest_annot.png"
         del data["screenshotBase64"]
 
-    # 2. Playwright screenshot (real page)
-    try:
-        clip = data.get("region") or data.get("annotationBounds")
-        page_png = await playwright_screenshot(
-            url=data["url"],
-            viewport=data.get("viewport"),
-            scroll=data.get("scroll"),
-            clip=clip,
-        )
+    # 2. Page screenshot — prefer client-side PNG (faithful to user's state);
+    #    fall back to Playwright re-fetch if absent or disabled.
+    page_png = None
+    if _dom_snapshot_enabled() and "pageScreenshotBase64" in data:
+        try:
+            page_png = base64.b64decode(data["pageScreenshotBase64"])
+        except Exception as e:
+            print(f"[peek] client-side PNG decode failed, falling back to Playwright: {e}")
+    if "pageScreenshotBase64" in data:
+        # Never persist the raw base64 in capture JSON — strip after handling
+        del data["pageScreenshotBase64"]
+
+    if page_png is None:
+        # Playwright fallback (v0.4 behavior — stateless re-fetch)
+        try:
+            clip = data.get("region") or data.get("annotationBounds")
+            page_png = await playwright_screenshot(
+                url=data["url"],
+                viewport=data.get("viewport"),
+                scroll=data.get("scroll"),
+                clip=clip,
+            )
+        except Exception as e:
+            error_msg = str(e)
+            if "ERR_CONNECTION_REFUSED" in error_msg:
+                print(f"Playwright screenshot failed: could not connect to {data.get('url')} — is the dev server running?")
+                data["screenshot_error"] = f"Connection refused: {data.get('url')} — dev server may not be running"
+            elif "URL host must be" in error_msg:
+                print(f"Playwright screenshot failed: {data.get('url')} is not a local URL")
+                data["screenshot_error"] = f"URL not allowed: only localhost and LAN addresses are supported"
+            else:
+                print(f"Playwright screenshot failed: {e}")
+                data["screenshot_error"] = error_msg
+            page_png = None
+
+    if page_png is not None:
         (CAPTURES_DIR / "capture_latest.png").write_bytes(page_png)
         (CAPTURES_DIR / f"capture_{ts}.png").write_bytes(page_png)
         data["screenshot"] = "capture_latest.png"
-    except Exception as e:
-        error_msg = str(e)
-        if "ERR_CONNECTION_REFUSED" in error_msg:
-            print(f"Playwright screenshot failed: could not connect to {data.get('url')} — is the dev server running?")
-            data["screenshot_error"] = f"Connection refused: {data.get('url')} — dev server may not be running"
-        elif "URL host must be" in error_msg:
-            print(f"Playwright screenshot failed: {data.get('url')} is not a local URL")
-            data["screenshot_error"] = f"URL not allowed: only localhost and LAN addresses are supported"
-        else:
-            print(f"Playwright screenshot failed: {e}")
-            data["screenshot_error"] = error_msg
+    else:
         data["screenshot"] = None
 
     # 3. Redact secrets from text fields, then save JSON metadata
@@ -173,6 +233,9 @@ async def receive_capture(request: Request):
     data["timestamp"] = ts
     (CAPTURES_DIR / "capture_latest.json").write_text(json.dumps(data, indent=2, ensure_ascii=False))
     (CAPTURES_DIR / f"capture_{ts}.json").write_text(json.dumps(data, indent=2, ensure_ascii=False))
+
+    # 4. Prune archive — keep only the most recent timestamped captures
+    _prune_capture_archive()
 
     if data.get("screenshot_error"):
         return {"status": "partial", "timestamp": ts, "warning": data["screenshot_error"]}
