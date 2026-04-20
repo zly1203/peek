@@ -227,8 +227,59 @@
     return results.slice(0, 20); // cap
   }
 
+  // ─── Faithful page PNG (via modern-screenshot, MIT) ───
+  let modernScreenshotLoadPromise = null;
+  function ensureModernScreenshotLoaded() {
+    if (window.modernScreenshot && window.modernScreenshot.domToPng) return Promise.resolve();
+    if (modernScreenshotLoadPromise) return modernScreenshotLoadPromise;
+    modernScreenshotLoadPromise = new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = `${BRIDGE}/static/modern-screenshot.js?t=${Date.now()}`;
+      s.onload = () => resolve();
+      s.onerror = () => {
+        modernScreenshotLoadPromise = null;
+        reject(new Error("Failed to load modern-screenshot"));
+      };
+      document.head.appendChild(s);
+    });
+    return modernScreenshotLoadPromise;
+  }
+
+  async function captureFullPagePng() {
+    // Hide Peek's own UI so it doesn't appear in the capture
+    const peekEls = Array.from(document.querySelectorAll(`[id^="${NS}"]`));
+    const originalVisibility = peekEls.map(el => ({ el, visibility: el.style.visibility }));
+    peekEls.forEach(el => { el.style.visibility = "hidden"; });
+
+    try {
+      await ensureModernScreenshotLoaded();
+      // Let the visibility change paint before rendering
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const dataUrl = await window.modernScreenshot.domToPng(document.documentElement, {
+        scale: 1,
+        width: document.documentElement.scrollWidth,
+        height: document.documentElement.scrollHeight,
+      });
+      // Strip the "data:image/png;base64," prefix
+      const comma = dataUrl.indexOf(",");
+      return comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+    } finally {
+      originalVisibility.forEach(({ el, visibility }) => { el.style.visibility = visibility; });
+    }
+  }
+
   // ─── Send capture to bridge ───
   async function sendCapture(data) {
+    // Attach a client-side PNG when possible so the server can skip the
+    // stateless Playwright re-fetch and agents see the user's real state.
+    // Silently fall back if modern-screenshot fails — server handles absence.
+    try {
+      const png = await captureFullPagePng();
+      if (png) data.pageScreenshotBase64 = png;
+    } catch (e) {
+      console.warn("Peek: client-side PNG failed, server will fall back to Playwright", e);
+    }
+
     try {
       const resp = await fetch(`${BRIDGE}/api/capture`, {
         method: "POST",
