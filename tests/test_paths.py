@@ -110,12 +110,12 @@ def test_cli_entry_point_exists():
 
 
 def test_mcp_tools_registered():
-    """MCP server should have screenshot and get_latest_capture tools."""
+    """MCP server should have screenshot and get_user_selection tools."""
     from src.mcp_server import mcp
 
     tool_names = [t.name for t in mcp._tool_manager.list_tools()]
     assert "screenshot" in tool_names, "screenshot tool not registered"
-    assert "get_latest_capture" in tool_names, "get_latest_capture tool not registered"
+    assert "get_user_selection" in tool_names, "get_user_selection tool not registered"
 
 
 def test_screenshot_url_validation():

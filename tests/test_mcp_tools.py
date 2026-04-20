@@ -1,19 +1,19 @@
-"""Unit tests for MCP tools: screenshot and get_latest_capture."""
+"""Unit tests for MCP tools: screenshot and get_user_selection."""
 
 import json
 import base64
 from unittest.mock import AsyncMock, patch, MagicMock
 import pytest
 
-from src.mcp_server import screenshot, get_latest_capture, CAPTURES_DIR
+from src.mcp_server import screenshot, get_user_selection, CAPTURES_DIR
 
 
 @pytest.mark.asyncio
-async def test_get_latest_capture_no_files(tmp_captures, monkeypatch):
+async def test_get_user_selection_no_files(tmp_captures, monkeypatch):
     """Returns 'no captures' message when no files exist."""
     monkeypatch.setattr("src.mcp_server.CAPTURES_DIR", tmp_captures)
 
-    result = await get_latest_capture()
+    result = await get_user_selection()
 
     assert len(result) == 1
     assert result[0].type == "text"
@@ -21,12 +21,12 @@ async def test_get_latest_capture_no_files(tmp_captures, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_get_latest_capture_with_screenshot(sample_capture, monkeypatch):
+async def test_get_user_selection_with_screenshot(sample_capture, monkeypatch):
     """Returns JSON metadata + screenshot image."""
     captures, metadata, png_bytes = sample_capture
     monkeypatch.setattr("src.mcp_server.CAPTURES_DIR", captures)
 
-    result = await get_latest_capture()
+    result = await get_user_selection()
 
     # Should have 2 items: TextContent (JSON) + ImageContent (screenshot)
     assert len(result) == 2
@@ -41,12 +41,12 @@ async def test_get_latest_capture_with_screenshot(sample_capture, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_get_latest_capture_with_annotation(sample_annotated_capture, monkeypatch):
+async def test_get_user_selection_with_annotation(sample_annotated_capture, monkeypatch):
     """Returns JSON + screenshot + annotation overlay."""
     captures, metadata, png_bytes = sample_annotated_capture
     monkeypatch.setattr("src.mcp_server.CAPTURES_DIR", captures)
 
-    result = await get_latest_capture()
+    result = await get_user_selection()
 
     # Should have 3 items: TextContent + ImageContent (screenshot) + ImageContent (annotation)
     assert len(result) == 3
@@ -60,13 +60,13 @@ async def test_get_latest_capture_with_annotation(sample_annotated_capture, monk
 
 
 @pytest.mark.asyncio
-async def test_get_latest_capture_no_annotation_file(sample_capture, monkeypatch):
+async def test_get_user_selection_no_annotation_file(sample_capture, monkeypatch):
     """Does not include annotation when file doesn't exist."""
     captures, metadata, png_bytes = sample_capture
     # Metadata has no annotationOverlay key (region mode)
     monkeypatch.setattr("src.mcp_server.CAPTURES_DIR", captures)
 
-    result = await get_latest_capture()
+    result = await get_user_selection()
 
     # Only JSON + screenshot, no annotation
     assert len(result) == 2

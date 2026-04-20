@@ -111,9 +111,9 @@ async def test_url_validation_blocks_external(browser):
 
 @pytest.mark.asyncio
 async def test_mcp_roundtrip(test_server, browser):
-    """Full roundtrip: screenshot → save → get_latest_capture reads it back."""
+    """Full roundtrip: screenshot → save → get_user_selection reads it back."""
     import base64
-    from src.mcp_server import get_latest_capture, CAPTURES_DIR
+    from src.mcp_server import get_user_selection, CAPTURES_DIR
 
     png_bytes = await take_screenshot(browser, test_server)
     (CAPTURES_DIR / "capture_latest.png").write_bytes(png_bytes)
@@ -132,7 +132,7 @@ async def test_mcp_roundtrip(test_server, browser):
         json.dumps(metadata, indent=2, ensure_ascii=False)
     )
 
-    result = await get_latest_capture()
+    result = await get_user_selection()
 
     assert len(result) >= 2
     assert result[0].type == "text"

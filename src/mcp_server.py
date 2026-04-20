@@ -1,8 +1,8 @@
 """MCP Server for Peek.
 
 Exposes two tools to Claude Code via stdio:
-- screenshot: take a screenshot of any URL
-- get_latest_capture: retrieve the latest bookmarklet capture
+- screenshot: take a screenshot of any URL (default for viewing pages)
+- get_user_selection: read what the user just captured with the bookmarklet
 
 Also launches the Bridge Server in a background thread so bookmarklet
 data flows in while MCP serves Claude Code.
@@ -67,6 +67,22 @@ async def _shutdown_browser():
         _pw = None
 
 
+def _translate_screenshot_error(e: Exception, url: str) -> str:
+    """Turn raw Playwright/validation errors into user-readable guidance."""
+    msg = str(e)
+    if "ERR_CONNECTION_REFUSED" in msg:
+        return f"Could not connect to {url}. Is your dev server running on this port? Double-check the port in your request."
+    if "ERR_NAME_NOT_RESOLVED" in msg:
+        return f"Could not resolve the hostname in {url}. Check the URL spelling, or verify your .local/.test domain is set up on this machine."
+    if "URL host must be" in msg or "Unsupported URL scheme" in msg or "must not contain userinfo" in msg:
+        return "Peek only supports local/LAN URLs (localhost, 127.0.0.1, private IPs, .local/.test). Public URLs are blocked for safety."
+    if "Timeout" in msg or "timeout" in msg.lower():
+        return f"Page at {url} didn't load within 15 seconds. Your server may be slow or stuck — check the server logs."
+    if "Playwright Chromium is not installed" in msg or "Executable doesn't exist" in msg:
+        return "Playwright Chromium is not installed. Run: playwright install chromium"
+    return f"Screenshot failed: {msg}. If this persists, the page may have crashed or Playwright may need reinstalling."
+
+
 @mcp.tool()
 async def screenshot(
     url: str,
@@ -74,10 +90,16 @@ async def screenshot(
     width: int = 1280,
     height: int = 800,
 ) -> list:
-    """Take a screenshot of any URL via Playwright headless Chromium.
+    """Take a headless screenshot of any local/LAN URL.
 
-    Use this to visually inspect a web page. Can be used after modifying
-    UI code to verify visual changes.
+    Use when the user specifies a URL, or wants a fresh page render
+    (e.g. verifying UI after code edits). Renders in a fresh headless
+    Chromium session — no cookies, no login state, no user interactions.
+
+    For ambiguous requests ("look at it", "check it", "看一下"), prefer
+    `get_user_selection` first — the user may have clicked the Peek
+    bookmarklet on the thing they want you to see. Only fall back to
+    this `screenshot` tool if no capture exists or it's clearly stale.
 
     Args:
         url: The page URL to screenshot (e.g. http://localhost:3000)
@@ -101,19 +123,32 @@ async def screenshot(
             )
         ]
     except Exception as e:
-        return [TextContent(type="text", text=f"Screenshot failed: {e}")]
+        return [TextContent(type="text", text=_translate_screenshot_error(e, url))]
 
 
 @mcp.tool()
-async def get_latest_capture() -> list:
-    """Get the latest capture from the Peek bookmarklet.
+async def get_user_selection() -> list:
+    """Read what the user captured with the Peek bookmarklet.
 
-    Returns the screenshot image, element metadata (selectors, styles,
-    bounding boxes), and annotation overlay if available. Use this after
-    the user has selected a region, element, or drawn annotations in
-    their browser.
+    This is the primary tool for seeing what the user is pointing at.
+    Use it when:
+      - The user references their selection/click/drawing
+        ("check what I selected", "look at the element I pointed at",
+         "see my annotation")
+      - The user's request is ambiguous ("look at it", "check it",
+        "看一下") — a fresh capture is usually what they mean.
+
+    Returns screenshot + element metadata (selectors, styles, bounding
+    boxes, ancestor chain, sibling position, parent layout) + annotation
+    overlay if drawn. Metadata includes `age_seconds` (how long since
+    the bookmarklet was clicked) and `url` (the page it was captured on).
+
+    If `age_seconds` is clearly old (e.g. hours) AND the user did not
+    reference their selection, call `screenshot(url)` using the `url`
+    from this metadata for a fresh render of the same page.
     """
     from mcp.types import TextContent, ImageContent
+    import time
 
     json_path = CAPTURES_DIR / "capture_latest.json"
     png_path = CAPTURES_DIR / "capture_latest.png"
@@ -127,8 +162,22 @@ async def get_latest_capture() -> list:
 
     result = []
 
-    # JSON metadata
-    metadata = json.loads(json_path.read_text())
+    # JSON metadata — annotate with age_seconds so the agent can judge freshness
+    try:
+        metadata = json.loads(json_path.read_text())
+    except json.JSONDecodeError:
+        return [TextContent(
+            type="text",
+            text="Capture file is corrupted. Click the Peek bookmarklet again to create a fresh capture.",
+        )]
+    ts = metadata.get("timestamp")
+    if ts:
+        try:
+            from datetime import datetime
+            capture_time = datetime.strptime(ts, "%Y%m%d_%H%M%S").timestamp()
+            metadata["age_seconds"] = int(time.time() - capture_time)
+        except Exception:
+            pass
     result.append(TextContent(type="text", text=json.dumps(metadata, indent=2, ensure_ascii=False)))
 
     # Screenshot

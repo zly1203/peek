@@ -117,7 +117,7 @@ SETUP_HTML = """<!DOCTYPE html>
     <li><span class="keys">Alt+S</span> Element — hover to highlight, click to select</li>
   </ul>
 </div>
-<div class="step"><b>Step 5</b> — After selecting/annotating, ask your AI agent to <code>get_latest_capture()</code></div>
+<div class="step"><b>Step 5</b> — After selecting/annotating, ask your AI agent to <code>get_user_selection()</code></div>
 </body>
 </html>"""
 

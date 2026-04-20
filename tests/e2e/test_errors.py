@@ -326,11 +326,11 @@ async def test_concurrent_screenshots(bridge_server, test_page_server):
 
 @pytest.mark.asyncio
 async def test_mcp_get_latest_no_captures(bridge_server):
-    """get_latest_capture() with empty captures dir -> 'no captures' text."""
+    """get_user_selection() with empty captures dir -> 'no captures' text."""
     # bridge_server fixture ensures PEEK_CAPTURES_DIR is set and modules reloaded
-    from src.mcp_server import get_latest_capture
+    from src.mcp_server import get_user_selection
 
-    result = await get_latest_capture()
+    result = await get_user_selection()
     assert len(result) == 1
     assert result[0].type == "text"
     assert "no capture" in result[0].text.lower() or "No captures" in result[0].text

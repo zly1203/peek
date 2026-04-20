@@ -59,13 +59,20 @@ def _add_claude_mcp():
     if not peek_path:
         return False, "peek binary not found in PATH"
     try:
-        # Check if already added
+        # Check if already added with correct path
         list_result = subprocess.run(
             ["claude", "mcp", "list"],
             capture_output=True, text=True, timeout=10,
         )
         if "peek" in (list_result.stdout or ""):
-            return True, "already configured"
+            # Verify the registered path matches current peek binary
+            if peek_path in (list_result.stdout or ""):
+                return True, "already configured"
+            # Path mismatch — re-register with correct path
+            subprocess.run(
+                ["claude", "mcp", "remove", "-s", "user", "peek"],
+                capture_output=True, text=True, timeout=10,
+            )
 
         result = subprocess.run(
             ["claude", "mcp", "add", "-s", "user", "peek", "--", peek_path, "mcp"],

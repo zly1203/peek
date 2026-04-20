@@ -208,8 +208,8 @@ def test_captures_dir_not_in_package_dir():
         assert ".peek" in captures_str
 
 
-def test_get_latest_capture_reads_only_from_captures_dir(tmp_path, monkeypatch):
-    """get_latest_capture should only read from CAPTURES_DIR, nowhere else."""
+def test_get_user_selection_reads_only_from_captures_dir(tmp_path, monkeypatch):
+    """get_user_selection should only read from CAPTURES_DIR, nowhere else."""
     import os
     os.environ["PEEK_CAPTURES_DIR"] = str(tmp_path)
     import importlib
@@ -218,7 +218,7 @@ def test_get_latest_capture_reads_only_from_captures_dir(tmp_path, monkeypatch):
 
     # No captures — should return "no captures" message
     import asyncio
-    result = asyncio.run(src.mcp_server.get_latest_capture())
+    result = asyncio.run(src.mcp_server.get_user_selection())
     assert len(result) == 1
     assert "no captures" in result[0].text.lower()
 
@@ -226,7 +226,7 @@ def test_get_latest_capture_reads_only_from_captures_dir(tmp_path, monkeypatch):
     metadata = {"mode": "element", "url": "http://localhost:8080", "elements": []}
     (tmp_path / "capture_latest.json").write_text(json.dumps(metadata))
 
-    result = asyncio.run(src.mcp_server.get_latest_capture())
+    result = asyncio.run(src.mcp_server.get_user_selection())
     assert result[0].type == "text"
     data = json.loads(result[0].text)
     assert data["url"] == "http://localhost:8080"

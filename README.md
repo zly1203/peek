@@ -13,16 +13,25 @@ Peek fixes this. Your AI agent can screenshot any local page on its own. You can
 ### Claude Code (CLI or VS Code) — recommended
 
 ```bash
-pip install peek-mcp
+# 1. Install uv (one-time, manages Python for you)
+brew install uv
+# or: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 2. Install peek (uv auto-downloads a compatible Python)
+uv tool install peek-mcp
+
+# 3. One-shot setup
 peek setup
 ```
 
 `peek setup` does everything for you: installs Playwright Chromium, registers Peek as an MCP server in Claude Code (user scope, all projects), opens the bookmarklet page in your browser. Just drag the blue button to your bookmark bar.
 
+> Using pip directly? `pip install peek-mcp` works too, but requires Python 3.10+ already installed. `uv tool install` avoids the version-mismatch headache.
+
 ### Other AI tools (Cursor / Windsurf / Claude Desktop)
 
 ```bash
-pip install peek-mcp
+uv tool install peek-mcp
 playwright install chromium   # ~150 MB, one-time
 ```
 
@@ -71,7 +80,7 @@ Just ask your agent — "screenshot the page", "take a look at localhost:3000", 
 | **Element** | `Alt+S` | Click an element | Screenshot + selector, styles, HTML |
 | **Annotate** | `Alt+A` | Draw (pen, box, arrow) | Screenshot + your drawings + elements |
 
-4. Tell your agent: "check what I just selected" — it calls `get_latest_capture()`
+4. Tell your agent: "check what I just selected" — it calls `get_user_selection()`
 
 ## Supported URLs
 
@@ -89,10 +98,10 @@ Peek works with local and LAN addresses:
 
 ## MCP Tools
 
-| Tool | What it does |
+| Tool | When to use |
 |------|-------------|
-| `screenshot(url)` | Takes a screenshot of a local/LAN URL |
-| `get_latest_capture()` | Returns your latest bookmarklet selection — screenshot + element data + DOM context |
+| `screenshot(url)` | **Default** — agent fetches any local/LAN URL in a fresh headless browser. Use for general "look at the page" requests, verifying code changes, etc. |
+| `get_user_selection()` | Reads what *you* captured with the bookmarklet — a region, element, or annotation. Use when you want the agent to see exactly what you pointed at, including any state that requires your interaction (login, uploaded data, clicked buttons). |
 
 For `Element` mode captures, the agent gets structural context to find the right code:
 
@@ -112,7 +121,7 @@ Your AI agent calls screenshot(url)
 
 You point at something with the bookmarklet
     -> Peek grabs element data + takes a Playwright screenshot
-    -> Agent calls get_latest_capture() and sees everything
+    -> Agent calls get_user_selection() and sees everything
     -> "The chart legend overlaps the bars. Fixing the CSS..."
 ```
 
@@ -132,18 +141,33 @@ Your dev server isn't running on that port. Start your dev server first, then as
 
 Add the `CLAUDE.md` snippet from step 3 above. Without it, the agent will guess.
 
-**Bookmarklet not working**
+**Bookmarklet not working (click does nothing)**
 
-Delete it from your bookmark bar and re-drag from http://localhost:8899. Make sure `peek mcp` is running.
+The Peek bridge server isn't running, or is on a different port. Start it via `peek mcp`, or let Claude Code launch it through MCP. If you changed the port with `--port`, re-drag the bookmarklet from the new URL — the old one points at the old port.
 
-**`peek: command not found` after pip install**
+**`peek: command not found` after install**
 
-Your Python scripts directory may not be in your PATH. Try:
-```bash
-python -m peek mcp
-# or find the path:
-pip show peek-mcp | grep Location
-```
+If you used `uv tool install peek-mcp`, make sure `~/.local/bin` is in your PATH. Run `uv tool update-shell` to fix it automatically, then open a new terminal.
+
+If you used `pip install peek-mcp`, your Python scripts directory may not be in PATH. Find it with `pip show peek-mcp | grep Location`.
+
+**`No matching distribution found for peek-mcp`**
+
+Your Python is older than 3.10 (common on macOS system Python). Switch to `uv tool install peek-mcp` — uv downloads a compatible Python for you.
+
+**Using Peek from Safari, Firefox, or a different Chrome profile**
+
+The bookmarklet lives in each browser's bookmark bar independently — there's no cross-browser sync. To use it in another browser, open `http://localhost:8899` in that browser and drag the blue "Peek" button to its bookmark bar. One-time setup per browser. The `screenshot` tool itself is browser-agnostic (it uses Playwright's own headless Chromium), so it works regardless of which browser you develop in.
+
+**Screenshot shows a blank or default page instead of what I see**
+
+`screenshot(url)` renders in a fresh headless session with no cookies or session data. If your page requires login, upload, or any user interaction to show its real content, the headless render will miss that state. Workarounds:
+- For logged-in / post-interaction state, click the Peek bookmarklet on the page you want captured, then ask the agent to check your selection
+- For pages with purely in-memory state (e.g. uploaded files not yet saved to the server), a faithful capture isn't supported in v0.4 — take an OS screenshot (`Cmd+Shift+4` on macOS) and paste it directly into your chat
+
+**Agent returns a screenshot that doesn't match what I'm looking at**
+
+`get_user_selection` returns the last bookmarklet capture, which could be from hours or days ago. The metadata includes an `age_seconds` field — if that number is large, the agent should recognize it and fall back to `screenshot(url)`. To force a fresh capture, click the bookmarklet again on your current page.
 
 ## Limitations
 
@@ -160,5 +184,5 @@ peek mcp --port 9000      # different bridge port
 
 ## Requirements
 
-- Python 3.10+
-- Playwright Chromium (`playwright install chromium`)
+- `uv` (recommended — manages Python for you) or Python 3.10+
+- Playwright Chromium (auto-installed by `peek setup`, or run `playwright install chromium` manually)
