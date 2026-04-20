@@ -145,7 +145,7 @@ SETUP_HTML = """<!DOCTYPE html>
 <p><b>Drag the button below to your bookmark bar</b>, then click it on any local dev page.</p>
 
 <p style="text-align:center; margin: 32px 0;">
-  <a class="bookmarklet" href="javascript:(function(){if(window.__inspectorLoaded){return}var s=document.createElement('script');s.src='http://localhost:8899/static/inspector.js?t='+Date.now();s.onload=function(){window.__inspectorLoaded=true};document.head.appendChild(s)})()">
+  <a class="bookmarklet" href="javascript:(function(){var s=document.createElement('script');s.src='http://localhost:8899/static/inspector.js?t='+Date.now();document.head.appendChild(s)})()">
     Peek
   </a>
 </p>

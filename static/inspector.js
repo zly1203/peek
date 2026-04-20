@@ -3,9 +3,27 @@
  * Provides region select, element select, and annotation modes.
  * Sends captures to bridge server at localhost:8899.
  */
+const __PEEK_INSPECTOR_VERSION = "0.5.0";
+
 (function () {
-  if (window.__inspectorActive) return;
+  if (window.__inspectorActive) {
+    // Same page, already loaded. If version differs, user is on a
+    // stale copy after a server upgrade — ask them to reload.
+    if (window.__inspectorVersion !== __PEEK_INSPECTOR_VERSION) {
+      const prev = window.__inspectorVersion || "pre-0.5";
+      console.warn(
+        `[Peek] Version mismatch on this page (loaded: ${prev}, latest: ${__PEEK_INSPECTOR_VERSION}). ` +
+        `Reload to use the new version.`
+      );
+      alert(
+        `Peek has been upgraded (was ${prev}, now ${__PEEK_INSPECTOR_VERSION}).\n\n` +
+        `Please reload this page to use the new version.`
+      );
+    }
+    return;
+  }
   window.__inspectorActive = true;
+  window.__inspectorVersion = __PEEK_INSPECTOR_VERSION;
 
   const BRIDGE = window.__PEEK_BRIDGE_URL || "http://localhost:8899";
   const NS = "__uiinsp_"; // namespace prefix for all injected elements
