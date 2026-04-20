@@ -116,16 +116,20 @@ This means when you point at a button, the agent knows *which* button on which s
 
 ```
 Your AI agent calls screenshot(url)
-    -> Playwright takes a headless screenshot
-    -> Agent sees the page and can reason about the UI
+    -> Playwright takes a fresh headless screenshot (stateless view)
+    -> Agent sees the default render of the page
 
 You point at something with the bookmarklet
-    -> Peek grabs element data + takes a Playwright screenshot
-    -> Agent calls get_user_selection() and sees everything
+    -> Bookmarklet renders your CURRENT browser view to PNG client-side
+       (so login, uploaded data, clicked buttons are all preserved)
+    -> Peek also grabs element metadata (selector, styles, DOM context)
+    -> Agent calls get_user_selection() and sees what you see
     -> "The chart legend overlaps the bars. Fixing the CSS..."
 ```
 
 One process, two jobs: MCP server talks to your AI agent over stdio, bridge server receives bookmarklet data on port 8899. `peek mcp` runs both.
+
+> Client-side rendering uses [modern-screenshot](https://github.com/qq15725/modern-screenshot) (MIT, vendored at `static/modern-screenshot.js`). If it fails on an exotic page, the bridge falls back to the old Playwright re-fetch automatically. To force fallback globally, set `PEEK_DOM_SNAPSHOT=0`.
 
 ## Troubleshooting
 
@@ -161,9 +165,10 @@ The bookmarklet lives in each browser's bookmark bar independently — there's n
 
 **Screenshot shows a blank or default page instead of what I see**
 
-`screenshot(url)` renders in a fresh headless session with no cookies or session data. If your page requires login, upload, or any user interaction to show its real content, the headless render will miss that state. Workarounds:
-- For logged-in / post-interaction state, click the Peek bookmarklet on the page you want captured, then ask the agent to check your selection
-- For pages with purely in-memory state (e.g. uploaded files not yet saved to the server), a faithful capture isn't supported in v0.4 — take an OS screenshot (`Cmd+Shift+4` on macOS) and paste it directly into your chat
+`screenshot(url)` renders in a fresh headless session with no cookies or session data — it shows what an anonymous visitor would see, not your current view. If your page requires login, upload, or any user interaction to show its real content:
+
+- **Click the Peek bookmarklet** on the page you want captured, then ask the agent to check your selection. The bookmarklet renders your actual browser view to PNG client-side (since v0.5), so post-login / post-upload / post-interaction state is preserved.
+- If the bookmarklet capture itself looks off on an unusual page, try `PEEK_DOM_SNAPSHOT=0 peek mcp` to force the old Playwright re-fetch path. Or take an OS screenshot (`Cmd+Shift+4` on macOS) and paste it directly into your chat.
 
 **Agent returns a screenshot that doesn't match what I'm looking at**
 
@@ -172,8 +177,9 @@ The bookmarklet lives in each browser's bookmark bar independently — there's n
 ## Limitations
 
 - **Local/LAN only.** Public URLs are blocked for security (SSRF prevention).
-- **No auth.** Playwright uses a fresh browser context — no cookies, no login state.
-- **Captures may contain sensitive data.** Passwords and hidden inputs are redacted, but visible text and screenshots are saved as-is to `~/.peek/captures/` (outside your project).
+- **`screenshot(url)` is stateless.** It opens a fresh headless browser — no cookies, no login. For your actual session state, use the bookmarklet → `get_user_selection()`.
+- **Bookmarklet capture quality depends on the page.** Most CSS renders faithfully; exotic features (WebGL, cross-origin iframes, playing videos) may render with gaps. Set `PEEK_DOM_SNAPSHOT=0` to fall back to the Playwright re-fetch path if needed.
+- **Captures may contain sensitive data.** Passwords and hidden inputs are redacted, but visible text and screenshots are saved as-is to `~/.peek/captures/`. Peek keeps the 50 most recent captures automatically; older ones are pruned.
 
 ## CLI
 
