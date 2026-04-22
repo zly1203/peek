@@ -35,7 +35,7 @@ const __PEEK_INSPECTOR_VERSION = "0.5.0";
   let drawing = false;
   let savedScroll = { x: 0, y: 0 }; // saved scroll position for annotate mode
   let annotateLastPos = null;
-  let annotateTool = "freehand"; // 'freehand' | 'rect' | 'arrow'
+  let annotateTool = "freehand"; // 'freehand' | 'rect'
   let annotateShapes = [];
   let annotateCurrentShape = null;
   let pendingCapture = null; // staged capture data waiting for Send
@@ -330,45 +330,122 @@ const __PEEK_INSPECTOR_VERSION = "0.5.0";
   }
 
   // ─── Create toolbar ───
+  // ─── Load / save toolbar position ───
+  const TOOLBAR_POS_KEY = NS + "toolbar_pos";
+  function loadToolbarPos() {
+    try {
+      const raw = localStorage.getItem(TOOLBAR_POS_KEY);
+      if (!raw) return null;
+      const p = JSON.parse(raw);
+      if (typeof p.left !== "number" || typeof p.top !== "number") return null;
+      return p;
+    } catch { return null; }
+  }
+  function saveToolbarPos(left, top) {
+    try { localStorage.setItem(TOOLBAR_POS_KEY, JSON.stringify({ left, top })); } catch {}
+  }
+
   function createToolbar() {
     toolbar = document.createElement("div");
     toolbar.id = NS + "toolbar";
+    const saved = loadToolbarPos();
+    // Default: top-right corner, 16px margin
+    const initial = saved || { left: null, top: 16 };
+
     Object.assign(toolbar.style, {
-      position: "fixed", top: "0", left: "0", right: "0", height: "40px",
-      background: "rgba(15, 23, 42, 0.92)", backdropFilter: "blur(8px)",
-      display: "flex", alignItems: "center", justifyContent: "center", gap: "4px",
-      zIndex: "2147483646", fontFamily: "-apple-system, system-ui, sans-serif",
-      borderBottom: "1px solid rgba(255,255,255,0.1)",
+      position: "fixed",
+      top: initial.top + "px",
+      ...(initial.left !== null
+        ? { left: initial.left + "px" }
+        : { right: "16px" }),
+      background: "rgba(15, 23, 42, 0.85)",
+      backdropFilter: "blur(8px)",
+      borderRadius: "24px",
+      padding: "4px 6px",
+      display: "flex", alignItems: "center", gap: "2px",
+      zIndex: "2147483646",
+      fontFamily: "-apple-system, system-ui, sans-serif",
+      boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
+      border: "1px solid rgba(255,255,255,0.1)",
+      userSelect: "none",
+    });
+
+    // Drag handle
+    const dragHandle = document.createElement("div");
+    dragHandle.textContent = "⋮⋮";
+    dragHandle.title = "Drag to move";
+    Object.assign(dragHandle.style, {
+      cursor: "grab", padding: "6px 4px", color: "rgba(255,255,255,0.45)",
+      fontSize: "13px", lineHeight: "1", letterSpacing: "-3px",
     });
 
     const btnStyle = {
-      padding: "5px 14px", border: "none", borderRadius: "6px",
+      padding: "5px 12px", border: "none", borderRadius: "16px",
       color: "white", fontSize: "13px", cursor: "pointer",
-      background: "rgba(255,255,255,0.1)", transition: "background 0.15s",
+      background: "rgba(255,255,255,0.08)", transition: "background 0.15s",
     };
 
     function makeBtn(label, shortcut, modeName, onClick) {
       const btn = document.createElement("button");
-      btn.textContent = `${label} (${shortcut})`;
+      btn.textContent = label;
+      btn.title = `${label} (${shortcut})`;
       btn.dataset.mode = modeName;
       Object.assign(btn.style, btnStyle);
       btn.addEventListener("click", onClick);
-      btn.addEventListener("mouseenter", () => { if (btn.dataset.mode !== mode) btn.style.background = "rgba(255,255,255,0.2)"; });
-      btn.addEventListener("mouseleave", () => { if (btn.dataset.mode !== mode) btn.style.background = "rgba(255,255,255,0.1)"; });
+      btn.addEventListener("mouseenter", () => { if (btn.dataset.mode !== mode) btn.style.background = "rgba(255,255,255,0.18)"; });
+      btn.addEventListener("mouseleave", () => { if (btn.dataset.mode !== mode) btn.style.background = "rgba(255,255,255,0.08)"; });
       return btn;
     }
 
+    const annotateBtn = makeBtn("Annotate", "Alt+A", "annotate", () => setMode("annotate"));
     const regionBtn = makeBtn("Region", "Alt+R", "region", () => setMode("region"));
     const selectBtn = makeBtn("Element", "Alt+S", "select", () => setMode("select"));
-    const annotateBtn = makeBtn("Annotate", "Alt+A", "annotate", () => setMode("annotate"));
 
     const closeBtn = document.createElement("button");
     closeBtn.textContent = "✕";
-    Object.assign(closeBtn.style, { ...btnStyle, marginLeft: "12px", color: "#f87171" });
+    closeBtn.title = "Close Peek";
+    Object.assign(closeBtn.style, { ...btnStyle, marginLeft: "4px", color: "#f87171", padding: "5px 10px" });
     closeBtn.addEventListener("click", destroy);
 
-    toolbar.append(annotateBtn, regionBtn, selectBtn, closeBtn);
+    toolbar.append(dragHandle, annotateBtn, regionBtn, selectBtn, closeBtn);
     document.body.appendChild(toolbar);
+
+    // Drag behavior
+    let dragState = null;
+    dragHandle.addEventListener("mousedown", (e) => {
+      const rect = toolbar.getBoundingClientRect();
+      dragState = { startX: e.clientX, startY: e.clientY, origLeft: rect.left, origTop: rect.top };
+      dragHandle.style.cursor = "grabbing";
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    function onDragMove(e) {
+      if (!dragState) return;
+      const rect = toolbar.getBoundingClientRect();
+      let newLeft = dragState.origLeft + (e.clientX - dragState.startX);
+      let newTop = dragState.origTop + (e.clientY - dragState.startY);
+      // Clamp within viewport (leave at least 8px visible edge)
+      newLeft = Math.max(0, Math.min(window.innerWidth - rect.width, newLeft));
+      newTop = Math.max(0, Math.min(window.innerHeight - rect.height, newTop));
+      toolbar.style.left = newLeft + "px";
+      toolbar.style.top = newTop + "px";
+      toolbar.style.right = "auto";
+      e.preventDefault();
+    }
+    function onDragEnd() {
+      if (!dragState) return;
+      dragState = null;
+      dragHandle.style.cursor = "grab";
+      const rect = toolbar.getBoundingClientRect();
+      saveToolbarPos(Math.round(rect.left), Math.round(rect.top));
+    }
+    document.addEventListener("mousemove", onDragMove, true);
+    document.addEventListener("mouseup", onDragEnd, true);
+    // Store teardown hooks so destroy() can remove listeners
+    toolbar.__dragTeardown = () => {
+      document.removeEventListener("mousemove", onDragMove, true);
+      document.removeEventListener("mouseup", onDragEnd, true);
+    };
   }
 
   // ─── Create overlay (used for region + select modes) ───
@@ -376,7 +453,7 @@ const __PEEK_INSPECTOR_VERSION = "0.5.0";
     overlay = document.createElement("div");
     overlay.id = NS + "overlay";
     Object.assign(overlay.style, {
-      position: "fixed", top: "40px", left: "0", right: "0", bottom: "0",
+      position: "fixed", top: "0", left: "0", right: "0", bottom: "0",
       zIndex: "2147483645", cursor: "default",
     });
     document.body.appendChild(overlay);
@@ -463,7 +540,7 @@ const __PEEK_INSPECTOR_VERSION = "0.5.0";
   function createCanvas() {
     const dpr = window.devicePixelRatio || 1;
     const w = window.innerWidth;
-    const h = window.innerHeight - 40;
+    const h = window.innerHeight;
 
     // Save scroll position and prevent scrolling without layout shift
     savedScroll = { x: window.scrollX, y: window.scrollY };
@@ -479,7 +556,7 @@ const __PEEK_INSPECTOR_VERSION = "0.5.0";
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     Object.assign(canvas.style, {
-      position: "fixed", top: "40px", left: "0",
+      position: "fixed", top: "0", left: "0",
       width: w + "px", height: h + "px",
       zIndex: "2147483645", cursor: "crosshair",
       background: "transparent",
@@ -500,7 +577,6 @@ const __PEEK_INSPECTOR_VERSION = "0.5.0";
     const tools = [
       { name: "freehand", label: "Pen" },
       { name: "rect", label: "Rect" },
-      { name: "arrow", label: "Arrow" },
     ];
 
     for (const t of tools) {
@@ -543,7 +619,7 @@ const __PEEK_INSPECTOR_VERSION = "0.5.0";
   // ─── Annotation drawing ───
   function annotateMouseDown(e) {
     drawing = true;
-    const x = e.clientX, y = e.clientY - 40;
+    const x = e.clientX, y = e.clientY;
     annotateLastPos = { x, y };
 
     if (annotateTool === "freehand") {
@@ -553,7 +629,7 @@ const __PEEK_INSPECTOR_VERSION = "0.5.0";
       canvasCtx.lineWidth = 3;
       canvasCtx.lineCap = "round";
     } else {
-      // Save canvas state for rect/arrow preview
+      // Save canvas state for rect preview
       // Must save/restore with scale reset since getImageData uses physical pixels
       const dpr = window.devicePixelRatio || 1;
       canvasCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -569,7 +645,7 @@ const __PEEK_INSPECTOR_VERSION = "0.5.0";
 
   function annotateMouseMove(e) {
     if (!drawing) return;
-    const x = e.clientX, y = e.clientY - 40;
+    const x = e.clientX, y = e.clientY;
 
     if (annotateTool === "freehand") {
       canvasCtx.lineTo(x, y);
@@ -588,8 +664,6 @@ const __PEEK_INSPECTOR_VERSION = "0.5.0";
           annotateCurrentShape.startX, annotateCurrentShape.startY,
           x - annotateCurrentShape.startX, y - annotateCurrentShape.startY
         );
-      } else if (annotateTool === "arrow") {
-        drawArrow(canvasCtx, annotateCurrentShape.startX, annotateCurrentShape.startY, x, y);
       }
     }
     annotateLastPos = { x, y };
@@ -598,18 +672,6 @@ const __PEEK_INSPECTOR_VERSION = "0.5.0";
   function annotateMouseUp(e) {
     drawing = false;
     annotateCurrentShape = null;
-  }
-
-  function drawArrow(ctx, fromX, fromY, toX, toY) {
-    const headLen = 14;
-    const angle = Math.atan2(toY - fromY, toX - fromX);
-    ctx.beginPath();
-    ctx.moveTo(fromX, fromY);
-    ctx.lineTo(toX, toY);
-    ctx.lineTo(toX - headLen * Math.cos(angle - Math.PI / 6), toY - headLen * Math.sin(angle - Math.PI / 6));
-    ctx.moveTo(toX, toY);
-    ctx.lineTo(toX - headLen * Math.cos(angle + Math.PI / 6), toY - headLen * Math.sin(angle + Math.PI / 6));
-    ctx.stroke();
   }
 
   // ─── Calculate bounding box of drawn annotation strokes ───
@@ -870,6 +932,7 @@ const __PEEK_INSPECTOR_VERSION = "0.5.0";
   // ─── Cleanup ───
   function destroy() {
     cleanupMode();
+    toolbar?.__dragTeardown?.();
     toolbar?.remove();
     document.removeEventListener("keydown", handleKeydown, true);
     window.__inspectorActive = false;
