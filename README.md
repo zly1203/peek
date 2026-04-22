@@ -28,6 +28,18 @@ peek setup
 
 > Using pip directly? `pip install peek-mcp` works too, but requires Python 3.10+ already installed. `uv tool install` avoids the version-mismatch headache.
 
+### Upgrading
+
+```bash
+uv tool upgrade peek-mcp
+pkill -f "peek mcp"            # or: quit + reopen Claude Code
+# then: reload any browser tab that had Peek loaded
+```
+
+Three steps because three layers hold a copy of the code: disk (fixed by `uv tool upgrade`), the running `peek mcp` process (fixed by the kill/restart), and any browser page that already loaded the old `inspector.js` (fixed by a page reload). From v0.5.0 onward, Peek detects a stale `inspector.js` automatically and alerts you to reload — so if you forget step 3, you'll see a prompt the next time you click the bookmarklet.
+
+**Upgrading from v0.4 → v0.5.x**: also re-drag the blue button from `http://localhost:8899` to your bookmark bar once. The v0.4 bookmarklet JS had a caching gate that v0.5 removed. Future upgrades within the v0.5 line do not require re-dragging.
+
 ### Other AI tools (Cursor / Windsurf / Claude Desktop)
 
 ```bash
