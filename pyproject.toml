@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "peek-mcp"
-version = "0.5.1"
+version = "0.5.2"
 description = "Let AI agents see your UI — point at elements, annotate, and get instant visual context for AI-powered code editing."
 readme = "README.md"
 license = "MIT"

@@ -3,7 +3,7 @@
  * Provides region select, element select, and annotation modes.
  * Sends captures to bridge server at localhost:8899.
  */
-const __PEEK_INSPECTOR_VERSION = "0.5.1";
+const __PEEK_INSPECTOR_VERSION = "0.5.2";
 
 (function () {
   if (window.__inspectorActive) {
@@ -30,7 +30,7 @@ const __PEEK_INSPECTOR_VERSION = "0.5.1";
 
   // ─── State ───
   let mode = null; // 'region' | 'select' | 'annotate' | null
-  let overlay, toolbar, highlightBox, regionBox, canvas, canvasCtx, sendBar;
+  let overlay, toolbar, subtoolbar, highlightBox, regionBox, canvas, canvasCtx, sendBar;
   let regionStart = null;
   let drawing = false;
   let savedScroll = { x: 0, y: 0 }; // saved scroll position for annotate mode
@@ -345,6 +345,75 @@ const __PEEK_INSPECTOR_VERSION = "0.5.1";
     try { localStorage.setItem(TOOLBAR_POS_KEY, JSON.stringify({ left, top })); } catch {}
   }
 
+  // ─── Annotate sub-panel: Pen / Rect / Send, attached below the main pill ───
+  function createAnnotateSubpanel() {
+    subtoolbar = document.createElement("div");
+    subtoolbar.id = NS + "subtoolbar";
+    Object.assign(subtoolbar.style, {
+      position: "absolute",
+      left: "0",
+      top: "calc(100% + 6px)",
+      display: "none",  // revealed by setMode("annotate")
+      gap: "4px",
+      alignItems: "center",
+      background: "rgba(15, 23, 42, 0.85)",
+      backdropFilter: "blur(8px)",
+      borderRadius: "20px",
+      padding: "4px 6px",
+      boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
+      border: "1px solid rgba(255,255,255,0.1)",
+      whiteSpace: "nowrap",
+    });
+
+    const toolBtnStyle = {
+      padding: "4px 12px", border: "none", borderRadius: "14px",
+      color: "white", fontSize: "12px", cursor: "pointer",
+      background: "rgba(255,255,255,0.08)", transition: "background 0.15s",
+    };
+
+    const tools = [
+      { name: "freehand", label: "Pen" },
+      { name: "rect", label: "Rect" },
+    ];
+    for (const t of tools) {
+      const btn = document.createElement("button");
+      btn.textContent = t.label;
+      btn.dataset.tool = t.name;
+      Object.assign(btn.style, toolBtnStyle);
+      btn.style.background = t.name === annotateTool ? "#3b82f6" : toolBtnStyle.background;
+      btn.addEventListener("click", () => {
+        annotateTool = t.name;
+        subtoolbar.querySelectorAll("button[data-tool]").forEach(b => {
+          b.style.background = b.dataset.tool === t.name ? "#3b82f6" : toolBtnStyle.background;
+        });
+      });
+      subtoolbar.appendChild(btn);
+    }
+
+    const sendBtn = document.createElement("button");
+    sendBtn.textContent = "Send";
+    Object.assign(sendBtn.style, {
+      ...toolBtnStyle, background: "#22c55e", marginLeft: "4px",
+    });
+    sendBtn.addEventListener("click", sendAnnotation);
+    subtoolbar.appendChild(sendBtn);
+  }
+
+  // Flip sub-panel above the pill if there's no room below
+  function positionSubpanel() {
+    if (!subtoolbar || subtoolbar.style.display === "none") return;
+    const pillRect = toolbar.getBoundingClientRect();
+    const subH = subtoolbar.offsetHeight || 36;
+    const spaceBelow = window.innerHeight - pillRect.bottom;
+    if (spaceBelow < subH + 12) {
+      subtoolbar.style.top = "auto";
+      subtoolbar.style.bottom = "calc(100% + 6px)";
+    } else {
+      subtoolbar.style.bottom = "auto";
+      subtoolbar.style.top = "calc(100% + 6px)";
+    }
+  }
+
   function createToolbar() {
     toolbar = document.createElement("div");
     toolbar.id = NS + "toolbar";
@@ -408,6 +477,12 @@ const __PEEK_INSPECTOR_VERSION = "0.5.1";
     closeBtn.addEventListener("click", destroy);
 
     toolbar.append(dragHandle, annotateBtn, regionBtn, selectBtn, closeBtn);
+
+    // Annotate sub-panel — attached to the toolbar so it moves with it.
+    // Hidden by default; revealed by setMode("annotate").
+    createAnnotateSubpanel();
+    toolbar.appendChild(subtoolbar);
+
     document.body.appendChild(toolbar);
 
     // Drag behavior
@@ -430,6 +505,8 @@ const __PEEK_INSPECTOR_VERSION = "0.5.1";
       toolbar.style.left = newLeft + "px";
       toolbar.style.top = newTop + "px";
       toolbar.style.right = "auto";
+      // Keep sub-panel on the visible side of the pill while dragging
+      positionSubpanel();
       e.preventDefault();
     }
     function onDragEnd() {
@@ -565,50 +642,6 @@ const __PEEK_INSPECTOR_VERSION = "0.5.1";
     canvasCtx.scale(dpr, dpr);
     document.body.appendChild(canvas);
 
-    // Annotation sub-toolbar
-    const subtoolbar = document.createElement("div");
-    subtoolbar.id = NS + "subtoolbar";
-    Object.assign(subtoolbar.style, {
-      position: "fixed", top: "48px", left: "50%", transform: "translateX(-50%)",
-      background: "rgba(15,23,42,0.9)", borderRadius: "8px", padding: "4px 8px",
-      display: "flex", gap: "4px", zIndex: "2147483647",
-    });
-
-    const tools = [
-      { name: "freehand", label: "Pen" },
-      { name: "rect", label: "Rect" },
-    ];
-
-    for (const t of tools) {
-      const btn = document.createElement("button");
-      btn.textContent = t.label;
-      btn.dataset.tool = t.name;
-      Object.assign(btn.style, {
-        padding: "4px 12px", border: "none", borderRadius: "4px",
-        color: "white", fontSize: "12px", cursor: "pointer",
-        background: t.name === annotateTool ? "#3b82f6" : "rgba(255,255,255,0.1)",
-      });
-      btn.addEventListener("click", () => {
-        annotateTool = t.name;
-        subtoolbar.querySelectorAll("button").forEach(b => {
-          b.style.background = b.dataset.tool === t.name ? "#3b82f6" : "rgba(255,255,255,0.1)";
-        });
-      });
-      subtoolbar.appendChild(btn);
-    }
-
-    // Send button
-    const sendBtn = document.createElement("button");
-    sendBtn.textContent = "Send";
-    Object.assign(sendBtn.style, {
-      padding: "4px 16px", border: "none", borderRadius: "4px",
-      color: "white", fontSize: "12px", cursor: "pointer",
-      background: "#22c55e", marginLeft: "8px",
-    });
-    sendBtn.addEventListener("click", sendAnnotation);
-    subtoolbar.appendChild(sendBtn);
-
-    document.body.appendChild(subtoolbar);
 
     // Canvas events
     canvas.addEventListener("mousedown", annotateMouseDown);
@@ -781,6 +814,8 @@ const __PEEK_INSPECTOR_VERSION = "0.5.1";
       overlay.addEventListener("click", selectClick);
     } else if (mode === "annotate") {
       createCanvas();
+      subtoolbar.style.display = "flex";
+      positionSubpanel();
     }
   }
 
@@ -790,7 +825,7 @@ const __PEEK_INSPECTOR_VERSION = "0.5.1";
     regionBox?.remove(); regionBox = null;
     canvas?.remove(); canvas = null;
     sendBar?.remove(); sendBar = null;
-    document.getElementById(NS + "subtoolbar")?.remove();
+    if (subtoolbar) subtoolbar.style.display = "none";
     regionStart = null;
     drawing = false;
     pendingCapture = null;
