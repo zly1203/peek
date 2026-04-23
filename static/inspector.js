@@ -3,7 +3,7 @@
  * Provides region select, element select, and annotation modes.
  * Sends captures to bridge server at localhost:8899.
  */
-const __PEEK_INSPECTOR_VERSION = "0.5.2";
+const __PEEK_INSPECTOR_VERSION = "0.5.3";
 
 (function () {
   if (window.__inspectorActive) {
@@ -482,6 +482,22 @@ const __PEEK_INSPECTOR_VERSION = "0.5.2";
     // Hidden by default; revealed by setMode("annotate").
     createAnnotateSubpanel();
     toolbar.appendChild(subtoolbar);
+
+    // Keep the user's page-level popovers / dropdowns / collapsibles open
+    // while they interact with Peek. Two protections:
+    //   - preventDefault on mousedown: buttons never receive focus, so the
+    //     page's currently-focused element (the popover trigger) does not
+    //     emit blur → nothing auto-dismisses on focus loss.
+    //   - stopPropagation on click: document-level "click outside to close"
+    //     handlers on the page never see clicks that land on our toolbar.
+    // The drag handle has its own mousedown listener that calls
+    // stopPropagation, so toolbar's bubble-phase listener below is a no-op
+    // when the user grabs the handle.
+    toolbar.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    toolbar.addEventListener("click", (e) => { e.stopPropagation(); });
 
     document.body.appendChild(toolbar);
 
