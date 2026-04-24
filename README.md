@@ -189,7 +189,16 @@ Open `~/.peek/bookmarklet.html` in that browser and drag the blue button to its 
 ```bash
 peek                      # status + next step (most users just need this)
 peek setup                # one-shot: install, register MCP, drop bookmarklet page
-peek mcp                  # advanced — Claude Code auto-launches this
+peek mcp                  # advanced — your MCP client auto-launches this
 peek mcp --port 9000      # advanced — different bridge port
 ```
+
+### When do I need to run `peek mcp` manually?
+
+Almost never. Your MCP client launches it for you:
+
+- **Claude Code** — auto-launches `peek mcp` when an agent uses a Peek tool (registered by `peek setup`).
+- **Cursor / Windsurf / Claude Desktop** — launch it via their MCP config (point `command` at the `peek` binary with `["mcp"]` args; see each client's MCP docs).
+
+The one case you'd run `peek mcp` by hand: **testing the bookmarklet without any MCP client** — e.g. drawing on a page just to see what data Peek sends, with no agent in the loop. Keep the terminal open while you test; Ctrl+C to stop.
 

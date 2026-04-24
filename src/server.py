@@ -48,6 +48,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
+    # `null` covers file:// URLs — browsers report them as Origin: null, and
+    # dropping a bookmarklet on a local HTML file is a first-class Peek use.
+    allow_origins=["null"],
     allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_methods=["*"],
     allow_headers=["*"],

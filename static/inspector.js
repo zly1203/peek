@@ -10,7 +10,7 @@
   // clicked ✕ and then re-clicked the bookmarklet) would throw
   // "already declared" and the IIFE never runs. Locally scoped means each
   // load gets a fresh binding.
-  const __PEEK_INSPECTOR_VERSION = "0.5.12";
+  const __PEEK_INSPECTOR_VERSION = "0.5.13";
 
   if (window.__inspectorActive) {
     const prev = window.__inspectorVersion || "pre-0.5";
@@ -46,14 +46,11 @@
 
   // ─── State ───
   let mode = null; // 'region' | 'select' | 'annotate' | null
-  let overlay, toolbar, subtoolbar, modeTip, highlightBox, regionBox, canvas, canvasCtx, sendBar;
+  let overlay, toolbar, subtoolbar, modeTip, highlightBox, regionBox, canvas, canvasCtx;
   let regionStart = null;
   let drawing = false;
   let savedScroll = { x: 0, y: 0 }; // saved scroll position for annotate mode
   let annotateLastPos = null;
-  let annotateTool = "freehand"; // 'freehand' | 'rect'
-  let annotateShapes = [];
-  let annotateCurrentShape = null;
   let pendingCapture = null; // staged capture data waiting for Send
 
   // ─── Utility: CSS selector for element ───
@@ -289,12 +286,22 @@
       await ensureModernScreenshotLoaded();
       // Let the visibility change paint before rendering
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+      // Render the viewport only, not the whole document. Passing width/height
+      // sizes the output canvas to the viewport; the root `transform` shifts
+      // the cloned DOM so what was at (scrollX, scrollY) lands at the origin.
+      // Rendering the full document on a tall page produced 5-50 MB PNGs that
+      // exceeded Claude's ~5 MB image limit — and Peek's job is to show what
+      // the user selected, which is always in view.
       const dataUrl = await window.modernScreenshot.domToPng(document.documentElement, {
         scale: 1,
-        width: document.documentElement.scrollWidth,
-        height: document.documentElement.scrollHeight,
+        width: window.innerWidth,
+        height: window.innerHeight,
+        style: {
+          transform: `translate(${-window.scrollX}px, ${-window.scrollY}px)`,
+          transformOrigin: "top left",
+        },
       });
-      // Strip the "data:image/png;base64," prefix
       const comma = dataUrl.indexOf(",");
       return comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
     } finally {
@@ -314,18 +321,51 @@
       console.warn("Peek: client-side PNG failed, server will fall back to Playwright", e);
     }
 
+    let resp;
     try {
-      const resp = await fetch(`${BRIDGE}/api/capture`, {
+      resp = await fetch(`${BRIDGE}/api/capture`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
+    } catch (e) {
+      // True network-level failure: bridge really isn't reachable.
+      showToast(
+        "Peek bridge not running — open Claude Code (it starts peek automatically) or run `peek mcp` in a terminal.",
+        true,
+      );
+      console.error("[Peek] capture fetch failed:", e);
+      return;
+    }
+
+    // Bridge responded but with an error (413 too-large, 500 server bug, etc.).
+    // Don't mis-report as "bridge not running" — show what the server said.
+    if (!resp.ok) {
+      let detail = `HTTP ${resp.status}`;
+      try {
+        const body = await resp.json();
+        detail = body.error || body.warning || body.detail || detail;
+      } catch {}
+      if (resp.status === 413) {
+        showToast(
+          `Peek: capture too large (${detail}). Try a shorter page or a smaller region.`,
+          true,
+        );
+      } else {
+        showToast(`Peek capture failed: ${detail}`, true);
+      }
+      console.error("[Peek] capture rejected by bridge:", resp.status, detail);
+      return;
+    }
+
+    try {
       const result = await resp.json();
       showToast("Captured!");
       return result;
     } catch (e) {
-      showToast("Peek bridge not running — open Claude Code (it starts peek automatically) or run `peek mcp` in a terminal.", true);
-      console.error("Peek capture failed:", e);
+      // 2xx response but body isn't JSON — unusual but possible (proxy etc.).
+      showToast("Peek: unexpected response from bridge.", true);
+      console.error("[Peek] response parse failed:", e);
     }
   }
 
@@ -361,58 +401,72 @@
     try { localStorage.setItem(TOOLBAR_POS_KEY, JSON.stringify({ left, top })); } catch {}
   }
 
-  // ─── Annotate sub-panel: Pen / Rect / Send, attached below the main pill ───
-  function createAnnotateSubpanel() {
+  // ─── Sub-panel below the pill — hosts Send (+ optional hint) for every
+  // mode, so Send's position is consistent whether you're annotating,
+  // region-selecting, or element-picking. Content is repopulated by
+  // `showSubpanel(...)` when the mode / selection changes.
+  function createSubpanel() {
     subtoolbar = document.createElement("div");
     subtoolbar.id = NS + "subtoolbar";
     Object.assign(subtoolbar.style, {
       position: "absolute",
       left: "0",
       top: "calc(100% + 6px)",
-      display: "none",  // revealed by setMode("annotate")
-      gap: "4px",
+      display: "none",
+      gap: "8px",
       alignItems: "center",
       background: "rgba(15, 23, 42, 0.85)",
       backdropFilter: "blur(8px)",
       borderRadius: "20px",
-      padding: "4px 6px",
+      padding: "4px 10px",
       boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
       border: "1px solid rgba(255,255,255,0.1)",
       whiteSpace: "nowrap",
     });
+  }
 
-    const toolBtnStyle = {
-      padding: "4px 12px", border: "none", borderRadius: "14px",
-      color: "white", fontSize: "12px", cursor: "pointer",
-      background: "rgba(255,255,255,0.08)", transition: "background 0.15s",
-    };
+  function showSubpanel({ hintText, onSend }) {
+    if (!subtoolbar) return;
+    subtoolbar.innerHTML = "";
 
-    const tools = [
-      { name: "freehand", label: "Pen" },
-      { name: "rect", label: "Rect" },
-    ];
-    for (const t of tools) {
-      const btn = document.createElement("button");
-      btn.textContent = t.label;
-      btn.dataset.tool = t.name;
-      Object.assign(btn.style, toolBtnStyle);
-      btn.style.background = t.name === annotateTool ? "#3b82f6" : toolBtnStyle.background;
-      btn.addEventListener("click", () => {
-        annotateTool = t.name;
-        subtoolbar.querySelectorAll("button[data-tool]").forEach(b => {
-          b.style.background = b.dataset.tool === t.name ? "#3b82f6" : toolBtnStyle.background;
-        });
+    if (hintText) {
+      const hint = document.createElement("span");
+      hint.id = NS + "subtoolbar_hint";
+      Object.assign(hint.style, {
+        color: "rgba(255,255,255,0.65)", fontSize: "12px",
+        fontFamily: "-apple-system, system-ui, sans-serif",
       });
-      subtoolbar.appendChild(btn);
+      hint.textContent = hintText;
+      subtoolbar.appendChild(hint);
     }
 
     const sendBtn = document.createElement("button");
+    sendBtn.id = NS + "subtoolbar_send";
     sendBtn.textContent = "Send";
     Object.assign(sendBtn.style, {
-      ...toolBtnStyle, background: "#22c55e", marginLeft: "4px",
+      padding: "4px 14px", border: "none", borderRadius: "14px",
+      color: "white", fontSize: "12px", cursor: "pointer",
+      background: "#22c55e",
     });
-    sendBtn.addEventListener("click", sendAnnotation);
+    sendBtn.addEventListener("click", onSend);
     subtoolbar.appendChild(sendBtn);
+
+    subtoolbar.style.display = "flex";
+    positionSubpanel();
+    // Subpanel just appeared; bump modeTip down so it doesn't stack under
+    // the pill in the same slot.
+    positionModeTip();
+  }
+
+  function updateSubpanelHint(hintText) {
+    const hint = document.getElementById(NS + "subtoolbar_hint");
+    if (hint) hint.textContent = hintText;
+  }
+
+  function hideSubpanel() {
+    if (subtoolbar) subtoolbar.style.display = "none";
+    // Subpanel gone; let modeTip reclaim the slot right below the pill.
+    positionModeTip();
   }
 
   // ─── Mode hint: tiny caption under the pill while a mode is active ───
@@ -554,9 +608,9 @@
 
     toolbar.append(dragHandle, annotateBtn, regionBtn, selectBtn, closeBtn);
 
-    // Annotate sub-panel — attached to the toolbar so it moves with it.
-    // Hidden by default; revealed by setMode("annotate").
-    createAnnotateSubpanel();
+    // Sub-panel — attached to the toolbar so it moves with it. Populated
+    // per-mode by `showSubpanel(...)`.
+    createSubpanel();
     toolbar.appendChild(subtoolbar);
 
     // Mode tip — tiny caption below the pill while a mode is active.
@@ -690,57 +744,22 @@
     document.body.appendChild(regionBox);
   }
 
-  // ─── Send bar (shared by region + element modes) ───
-  function createSendBar() {
-    sendBar = document.createElement("div");
-    sendBar.id = NS + "sendbar";
-    Object.assign(sendBar.style, {
-      position: "fixed", bottom: "24px", left: "50%", transform: "translateX(-50%)",
-      background: "rgba(15,23,42,0.9)", borderRadius: "8px", padding: "6px 12px",
-      display: "none", gap: "8px", alignItems: "center", zIndex: "2147483647",
-      fontFamily: "-apple-system, system-ui, sans-serif",
-    });
-
-    const hint = document.createElement("span");
-    hint.id = NS + "sendbar_hint";
-    Object.assign(hint.style, { color: "rgba(255,255,255,0.6)", fontSize: "12px" });
-    hint.textContent = "Select something first";
-
-    const sendBtn = document.createElement("button");
-    sendBtn.textContent = "Send";
-    sendBtn.id = NS + "sendbar_btn";
-    Object.assign(sendBtn.style, {
-      padding: "4px 16px", border: "none", borderRadius: "4px",
-      color: "white", fontSize: "12px", cursor: "pointer",
-      background: "#22c55e", display: "none",
-    });
-    sendBtn.addEventListener("click", sendPendingCapture);
-
-    sendBar.append(hint, sendBtn);
-    document.body.appendChild(sendBar);
-  }
-
-  function showSendBar(hintText) {
-    if (!sendBar) return;
-    const hint = document.getElementById(NS + "sendbar_hint");
-    const btn = document.getElementById(NS + "sendbar_btn");
-    hint.textContent = hintText;
-    btn.style.display = "inline-block";
-    sendBar.style.display = "flex";
-  }
-
   async function sendPendingCapture() {
     if (!pendingCapture) return;
-    await sendCapture(pendingCapture);
-    pendingCapture = null;
-    // Hide send button, show hint
-    const hint = document.getElementById(NS + "sendbar_hint");
-    const btn = document.getElementById(NS + "sendbar_btn");
-    if (hint) hint.textContent = "Sent! Select again or press Esc";
-    if (btn) btn.style.display = "none";
-    // Reset visual state
-    if (regionBox) { regionBox.style.display = "none"; regionBox.style.borderColor = "#3b82f6"; }
-    if (highlightBox) { highlightBox.style.borderColor = "#3b82f6"; }
+    const result = await sendCapture(pendingCapture);
+    if (result) {
+      // Success — sendCapture already showed a "Captured!" toast. Clear the
+      // staged capture, reset selection visuals, hide the subpanel. User
+      // can select again or press Esc.
+      pendingCapture = null;
+      if (regionBox) { regionBox.style.display = "none"; regionBox.style.borderColor = "#3b82f6"; }
+      if (highlightBox) { highlightBox.style.borderColor = "#3b82f6"; }
+      hideSubpanel();
+    } else {
+      // Failure — leave the staged capture + subpanel so the user can retry
+      // without re-selecting. sendCapture already showed an error toast.
+      updateSubpanelHint("Send failed — try again, or Esc to cancel");
+    }
   }
 
   // ─── Annotation canvas ───
@@ -780,62 +799,28 @@
     canvas.addEventListener("mouseup", annotateMouseUp);
   }
 
-  // ─── Annotation drawing ───
+  // ─── Annotation drawing (freehand only) ───
   function annotateMouseDown(e) {
     drawing = true;
     const x = e.clientX, y = e.clientY;
     annotateLastPos = { x, y };
-
-    if (annotateTool === "freehand") {
-      canvasCtx.beginPath();
-      canvasCtx.moveTo(x, y);
-      canvasCtx.strokeStyle = "#ef4444";
-      canvasCtx.lineWidth = 3;
-      canvasCtx.lineCap = "round";
-    } else {
-      // Save canvas state for rect preview
-      // Must save/restore with scale reset since getImageData uses physical pixels
-      const dpr = window.devicePixelRatio || 1;
-      canvasCtx.setTransform(1, 0, 0, 1, 0, 0);
-      const imageData = canvasCtx.getImageData(0, 0, canvas.width, canvas.height);
-      canvasCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      annotateCurrentShape = {
-        tool: annotateTool,
-        startX: x, startY: y,
-        imageData,
-      };
-    }
+    canvasCtx.beginPath();
+    canvasCtx.moveTo(x, y);
+    canvasCtx.strokeStyle = "#ef4444";
+    canvasCtx.lineWidth = 3;
+    canvasCtx.lineCap = "round";
   }
 
   function annotateMouseMove(e) {
     if (!drawing) return;
     const x = e.clientX, y = e.clientY;
-
-    if (annotateTool === "freehand") {
-      canvasCtx.lineTo(x, y);
-      canvasCtx.stroke();
-    } else if (annotateCurrentShape) {
-      // Redraw from saved state and preview shape
-      const dpr = window.devicePixelRatio || 1;
-      canvasCtx.setTransform(1, 0, 0, 1, 0, 0);
-      canvasCtx.putImageData(annotateCurrentShape.imageData, 0, 0);
-      canvasCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      canvasCtx.strokeStyle = "#ef4444";
-      canvasCtx.lineWidth = 3;
-
-      if (annotateTool === "rect") {
-        canvasCtx.strokeRect(
-          annotateCurrentShape.startX, annotateCurrentShape.startY,
-          x - annotateCurrentShape.startX, y - annotateCurrentShape.startY
-        );
-      }
-    }
+    canvasCtx.lineTo(x, y);
+    canvasCtx.stroke();
     annotateLastPos = { x, y };
   }
 
   function annotateMouseUp(e) {
     drawing = false;
-    annotateCurrentShape = null;
   }
 
   // ─── Calculate bounding box of drawn annotation strokes ───
@@ -885,11 +870,11 @@
       return;
     }
 
-    // Convert canvas coordinates (relative to canvas top-left) to viewport coordinates
-    // Canvas starts at y=40 (below toolbar), so add 40 to get viewport y
+    // Canvas is position:fixed top:0 left:0 (since v0.5.1 pill toolbar).
+    // Its coordinates already match viewport coordinates 1:1.
     const viewportRect = {
       x: annotBounds.x,
-      y: annotBounds.y + 40,  // canvas y=0 corresponds to viewport y=40
+      y: annotBounds.y,
       width: annotBounds.width,
       height: annotBounds.height,
     };
@@ -931,22 +916,21 @@
     if (mode === "region") {
       createOverlay();
       createRegionBox();
-      createSendBar();
       overlay.style.cursor = "crosshair";
       overlay.addEventListener("mousedown", regionMouseDown);
       overlay.addEventListener("mousemove", regionMouseMove);
       overlay.addEventListener("mouseup", regionMouseUp);
+      // Subpanel reveals itself after the first drag completes.
     } else if (mode === "select") {
       createOverlay();
       createHighlightBox();
-      createSendBar();
       overlay.style.cursor = "default";
       overlay.addEventListener("mousemove", selectMouseMove);
       overlay.addEventListener("click", selectClick);
+      // Subpanel reveals itself after an element is clicked.
     } else if (mode === "annotate") {
       createCanvas();
-      subtoolbar.style.display = "flex";
-      positionSubpanel();
+      showSubpanel({ onSend: sendAnnotation });
     }
     updateModeTip();
   }
@@ -956,8 +940,7 @@
     highlightBox?.remove(); highlightBox = null;
     regionBox?.remove(); regionBox = null;
     canvas?.remove(); canvas = null;
-    sendBar?.remove(); sendBar = null;
-    if (subtoolbar) subtoolbar.style.display = "none";
+    hideSubpanel();
     if (modeTip) modeTip.style.display = "none";
     regionStart = null;
     drawing = false;
@@ -1021,7 +1004,10 @@
       region: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) },
       elements,
     };
-    showSendBar(`Region: ${elements.length} element${elements.length !== 1 ? "s" : ""} — re-drag to adjust`);
+    showSubpanel({
+      hintText: `Region: ${elements.length} element${elements.length !== 1 ? "s" : ""} — re-drag to adjust`,
+      onSend: sendPendingCapture,
+    });
   }
 
   // ─── Element select handlers ───
@@ -1096,7 +1082,10 @@
     };
     const tag = el.tagName.toLowerCase();
     const id = el.id ? `#${el.id}` : "";
-    showSendBar(`Element: <${tag}${id}> — click another to change`);
+    showSubpanel({
+      hintText: `Element: <${tag}${id}> — click another to change`,
+      onSend: sendPendingCapture,
+    });
   }
 
   // ─── Keyboard shortcuts ───

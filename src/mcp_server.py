@@ -75,7 +75,7 @@ def _translate_screenshot_error(e: Exception, url: str) -> str:
     if "ERR_NAME_NOT_RESOLVED" in msg:
         return f"Could not resolve the hostname in {url}. Check the URL spelling, or verify your .local/.test domain is set up on this machine."
     if "URL host must be" in msg or "Unsupported URL scheme" in msg or "must not contain userinfo" in msg:
-        return "Peek only supports local/LAN URLs (localhost, 127.0.0.1, private IPs, .local/.test). Public URLs are blocked for safety."
+        return "Peek only supports local URLs: file://, localhost, 127.0.0.1, private IPs, .local/.test. Public URLs are blocked for safety."
     if "Timeout" in msg or "timeout" in msg.lower():
         return f"Page at {url} didn't load within 15 seconds. Your server may be slow or stuck — check the server logs."
     if "Playwright Chromium is not installed" in msg or "Executable doesn't exist" in msg:
@@ -274,13 +274,12 @@ def run(host: str = "127.0.0.1", port: int = 8899):
             )
         else:
             print(
-                f"\n  Peek bridge running on {url}\n"
-                f"  Open that URL in your browser if you need to (re)drag the\n"
-                f"  bookmarklet to your bookmark bar.\n\n"
-                f"  You usually don't need to keep this terminal open — Claude Code\n"
-                f"  will launch its own peek mcp whenever an agent uses a Peek tool.\n"
-                f"  This manual instance is useful for initial setup, for MCP clients\n"
-                f"  that don't auto-launch, or for debugging.\n\n"
+                f"\n  Peek bridge running on {url}\n\n"
+                f"  You usually don't need to keep this terminal open:\n"
+                f"    • Claude Code auto-launches peek when an agent uses a Peek tool.\n"
+                f"    • Cursor / Windsurf / Claude Desktop launch it via their MCP config.\n\n"
+                f"  Keep it open only if you want to test the bookmarklet without an\n"
+                f"  MCP client (drawing on a page to see what data Peek sends).\n\n"
                 f"  Press Ctrl+C to stop.\n",
                 file=sys.stderr,
             )
@@ -290,20 +289,33 @@ def run(host: str = "127.0.0.1", port: int = 8899):
         else:
             logger.info(f"Bridge server started on {host}:{port}")
 
-    # Ctrl+C handling: exit immediately. Graceful shutdown is overkill for a
-    # CLI tool — the OS reaps our daemon threads and the Playwright subprocess
-    # notices its parent's stdin pipe close and exits on its own within a
-    # second. Previous versions waited up to ~2s for "graceful" cleanup which
-    # users read as lag and pressed Ctrl+C again anyway.
+    # Ctrl+C handling. We want fast exit (no multi-second "graceful shutdown"
+    # users already interpret as hang) but no EPIPE traceback from
+    # Playwright's Node driver. os._exit alone closes the stdio pipe while
+    # the driver is mid-write → EPIPE. Sending the driver SIGTERM first +
+    # a brief drain window lets it flush and exit cleanly.
     import signal
+    import time
 
     def _handle_sigint(signum, frame):
         if sys.stdin.isatty():
             print("\n  Shutting down Peek...", file=sys.stderr, flush=True)
-        # Give uvicorn a nudge so the bridge loop can record its own exit
-        # state cleanly, but don't wait for it.
         if _bridge_server:
             _bridge_server.should_exit = True
+        # Reach the Playwright driver subprocess via internal attributes —
+        # if the path changes in a future Playwright release we fall back
+        # silently to the old (fast but noisy) behavior.
+        terminated = False
+        try:
+            if _browser is not None:
+                proc = _browser._impl_obj._connection._transport._proc
+                if proc is not None:
+                    proc.terminate()
+                    terminated = True
+        except Exception:
+            pass
+        if terminated:
+            time.sleep(0.3)
         os._exit(130)  # 128 + SIGINT
 
     signal.signal(signal.SIGINT, _handle_sigint)

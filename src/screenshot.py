@@ -43,6 +43,11 @@ def _is_local_or_lan(hostname: str) -> bool:
 def validate_url(url):
     """Restrict URLs to local/LAN addresses to prevent SSRF."""
     parsed = urlparse(url)
+    # file:// — local file read, no network fetch. Same charter as the
+    # bookmarklet's file:// CORS allowance; agent already has Read, so
+    # rendering a local HTML file isn't a new privilege.
+    if parsed.scheme == "file":
+        return url
     if parsed.scheme not in ("http", "https"):
         raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
     # Reject userinfo in URL (e.g. http://evil.com@localhost) — SSRF bypass

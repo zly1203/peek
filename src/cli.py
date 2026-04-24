@@ -217,9 +217,15 @@ def _setup():
     print("  ──────────────────────────────────────────────────────────────")
     print("  Setup complete. You can close this terminal.")
     print()
-    print("  From here on: open Claude Code and use it normally — it'll")
-    print("  launch peek in the background whenever an agent uses a Peek")
-    print("  tool. No `peek` command needs to keep running.")
+    if _detect_claude_code():
+        print("  From here on: open Claude Code and use it normally — it'll")
+        print("  launch peek in the background whenever an agent uses a Peek")
+        print("  tool. No `peek` command needs to keep running.")
+    else:
+        print("  From here on: point your MCP client (Cursor / Windsurf /")
+        print("  Claude Desktop) at `peek mcp` — see README for the config")
+        print("  snippet. Or, if you just want to try the bookmarklet without")
+        print("  an agent, run `peek mcp` in a terminal and keep it open.")
     print("  ──────────────────────────────────────────────────────────────")
     print()
 
