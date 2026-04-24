@@ -34,15 +34,9 @@ From then on: **open Claude Code and use it normally.** It auto-launches Peek in
 
 ```bash
 uv tool upgrade peek-mcp
-pkill -f "peek mcp"            # or: quit + reopen Claude Code
-# then: reload any browser tab that had Peek loaded
 ```
 
-Three steps because three layers hold a copy of the code: disk (fixed by `uv tool upgrade`), the running `peek mcp` process (fixed by the kill/restart), and any browser page that already loaded the old `inspector.js` (fixed by a page reload). From v0.5.0 onward, Peek detects a stale `inspector.js` automatically and alerts you to reload — so if you forget step 3, you'll see a prompt the next time you click the bookmarklet.
-
-> Don't run `peek setup` to upgrade. `peek setup` is for first-time installs. From v0.5.4 it detects an existing install and exits cleanly, but earlier versions would re-walk you through the bookmarklet drag flow unnecessarily.
-
-**Upgrading from v0.4 → v0.5.x**: re-drag the blue button from `~/.peek/bookmarklet.html` (or re-run `peek setup`, which opens it for you) once. The v0.4 bookmarklet JS had a caching gate that v0.5 removed. Future upgrades within the v0.5 line do not require re-dragging.
+That's it. The next time Claude Code launches `peek mcp` it'll pick up the new version. Open browser tabs with an old `inspector.js` auto-take-over on the next bookmarklet click.
 
 ### Other AI tools (Cursor / Windsurf / Claude Desktop)
 
@@ -94,7 +88,7 @@ Just ask your agent — "screenshot the page", "take a look at localhost:3000", 
 |------|----------|--------|------------|
 | **Region** | `Alt+R` | Drag a rectangle | Screenshot + elements in that area |
 | **Element** | `Alt+S` | Click an element | Screenshot + selector, styles, HTML |
-| **Annotate** | `Alt+A` | Draw (pen, box, arrow) | Screenshot + your drawings + elements |
+| **Annotate** | `Alt+A` | Draw (pen, rect) | Screenshot + your drawings + elements |
 
 4. Tell your agent: "check what I just selected" — it calls `get_user_selection()`
 
@@ -143,9 +137,7 @@ You point at something with the bookmarklet
     -> "The chart legend overlaps the bars. Fixing the CSS..."
 ```
 
-One process, two jobs: MCP server talks to your AI agent over stdio, bridge server receives bookmarklet data on port 8899. `peek mcp` runs both.
-
-> Client-side rendering uses [modern-screenshot](https://github.com/qq15725/modern-screenshot) (MIT, vendored at `static/modern-screenshot.js`). If it fails on an exotic page, the bridge falls back to the old Playwright re-fetch automatically. To force fallback globally, set `PEEK_DOM_SNAPSHOT=0`.
+Client-side rendering uses [modern-screenshot](https://github.com/qq15725/modern-screenshot) (MIT, vendored). If it fails on an exotic page, the bridge falls back to Playwright automatically — or set `PEEK_DOM_SNAPSHOT=0` to force it globally.
 
 ## Troubleshooting
 
@@ -153,32 +145,21 @@ One process, two jobs: MCP server talks to your AI agent over stdio, bridge serv
 
 Run `playwright install chromium`. This downloads the headless browser engine (~150 MB). Only needed once.
 
-**`ERR_CONNECTION_REFUSED` when taking a screenshot**
+**`ERR_CONNECTION_REFUSED` or agent uses the wrong port**
 
-Your dev server isn't running on that port. Start your dev server first, then ask the agent to screenshot. If you see this repeatedly, make sure the port in your `CLAUDE.md` matches your actual dev server.
-
-**Agent screenshots the wrong port**
-
-Add the `CLAUDE.md` snippet from step 3 above. Without it, the agent will guess.
+Either your dev server isn't running, or the agent guessed the wrong port. Add the `CLAUDE.md` snippet above so the agent knows your real port; start your dev server before asking for a screenshot.
 
 **Bookmarklet click does nothing**
 
-Peek's bridge server (which the bookmarklet talks to at `localhost:8899`) isn't running. Usually this means Claude Code isn't open — Claude Code is what launches `peek mcp` in the background. Options:
-
-- **Open Claude Code.** Once it starts, it auto-launches `peek mcp`. Reload your page, click the bookmarklet again.
-- **Or run `peek mcp` in a terminal manually.** Keep the terminal open while you use Peek. Ctrl+C when done.
-
-To see what state Peek is in, run `peek` with no arguments — it prints install status and tells you what, if anything, to do next.
+The bridge server isn't running. Open Claude Code (it auto-launches peek) or run `peek mcp` in a terminal. Run `peek` with no arguments to see install status.
 
 **Need the bookmarklet page again**
 
-It lives at `~/.peek/bookmarklet.html` after `peek setup`. Open that file in any browser and drag the blue button — no server required.
+Open `~/.peek/bookmarklet.html` in any browser and drag the blue button. No server needed.
 
 **`peek: command not found` after install**
 
-If you used `uv tool install peek-mcp`, make sure `~/.local/bin` is in your PATH. Run `uv tool update-shell` to fix it automatically, then open a new terminal.
-
-If you used `pip install peek-mcp`, your Python scripts directory may not be in PATH. Find it with `pip show peek-mcp | grep Location`.
+Your scripts directory isn't in PATH. For uv: run `uv tool update-shell` and open a new terminal. For pip: check the install location with `pip show peek-mcp`.
 
 **`No matching distribution found for peek-mcp`**
 
@@ -186,26 +167,22 @@ Your Python is older than 3.10 (common on macOS system Python). Switch to `uv to
 
 **Using Peek from Safari, Firefox, or a different Chrome profile**
 
-The bookmarklet lives in each browser's bookmark bar independently — there's no cross-browser sync. To use it in another browser, open `~/.peek/bookmarklet.html` in that browser and drag the blue "Peek" button to its bookmark bar. One-time setup per browser, and no server needed — it's a local file. The `screenshot` tool itself is browser-agnostic (it uses Playwright's own headless Chromium), so it works regardless of which browser you develop in.
+Open `~/.peek/bookmarklet.html` in that browser and drag the blue button to its bookmark bar — one-time setup per browser. The `screenshot` tool itself is browser-agnostic (headless Chromium), so it works regardless of your dev browser.
 
 **Screenshot shows a blank or default page instead of what I see**
 
-`screenshot(url)` renders in a fresh headless session with no cookies or session data — it shows what an anonymous visitor would see, not your current view. If your page requires login, upload, or any user interaction to show its real content:
+`screenshot(url)` runs a fresh headless browser — no cookies, no login, no interaction state. For pages behind login / upload / button clicks, use the bookmarklet → `get_user_selection()` instead; it captures your real browser view. If that too looks wrong on an unusual page, try `PEEK_DOM_SNAPSHOT=0` to fall back to Playwright.
 
-- **Click the Peek bookmarklet** on the page you want captured, then ask the agent to check your selection. The bookmarklet renders your actual browser view to PNG client-side (since v0.5), so post-login / post-upload / post-interaction state is preserved.
-- If the bookmarklet capture itself looks off on an unusual page, try `PEEK_DOM_SNAPSHOT=0 peek mcp` to force the old Playwright re-fetch path. Or take an OS screenshot (`Cmd+Shift+4` on macOS) and paste it directly into your chat.
+**Agent returns a stale screenshot**
 
-**Agent returns a screenshot that doesn't match what I'm looking at**
-
-`get_user_selection` returns the last bookmarklet capture, which could be from hours or days ago. The metadata includes an `age_seconds` field — if that number is large, the agent should recognize it and fall back to `screenshot(url)`. To force a fresh capture, click the bookmarklet again on your current page.
+`get_user_selection` returns the last bookmarklet capture. Click the bookmarklet again on your current page to refresh it.
 
 ## Limitations
 
-- **Local/LAN only.** Public URLs are blocked for security (SSRF prevention).
-- **`screenshot(url)` is stateless.** It opens a fresh headless browser — no cookies, no login. For your actual session state, use the bookmarklet → `get_user_selection()`.
-- **Bookmarklet capture quality depends on the page.** Most CSS renders faithfully; exotic features (WebGL, cross-origin iframes, playing videos) may render with gaps. Set `PEEK_DOM_SNAPSHOT=0` to fall back to the Playwright re-fetch path if needed.
-- **Peek does not survive a full page navigation.** If you click a link that loads a new URL (not an in-place SPA route change), the bookmarklet-injected script is gone. Click the bookmarklet again on the new page to re-activate Peek. This is a fundamental property of bookmarklets — switching to a browser extension would remove this limitation (not planned).
-- **Captures may contain sensitive data.** Passwords and hidden inputs are redacted, but visible text and screenshots are saved as-is to `~/.peek/captures/`. Peek keeps the 50 most recent captures automatically; older ones are pruned.
+- **Local/LAN only.** Public URLs are blocked (SSRF prevention).
+- **Bookmarklet render quality varies.** WebGL, cross-origin iframes, and playing videos may not capture faithfully; set `PEEK_DOM_SNAPSHOT=0` to fall back to Playwright.
+- **Peek doesn't survive full-page navigation.** Click a link to a new URL and the bookmarklet script is gone — click the bookmarklet again on the new page. Bookmarklet architecture constraint.
+- **Captures may contain sensitive data.** Passwords and hidden inputs are redacted, but visible text + screenshots live at `~/.peek/captures/` (last 50 kept, older pruned).
 
 ## CLI
 
@@ -216,7 +193,3 @@ peek mcp                  # advanced — Claude Code auto-launches this
 peek mcp --port 9000      # advanced — different bridge port
 ```
 
-## Requirements
-
-- `uv` (recommended — manages Python for you) or Python 3.10+
-- Playwright Chromium (auto-installed by `peek setup`, or run `playwright install chromium` manually)
