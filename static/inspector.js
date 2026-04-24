@@ -3,7 +3,7 @@
  * Provides region select, element select, and annotation modes.
  * Sends captures to bridge server at localhost:8899.
  */
-const __PEEK_INSPECTOR_VERSION = "0.5.10";
+const __PEEK_INSPECTOR_VERSION = "0.5.11";
 
 (function () {
   if (window.__inspectorActive) {
@@ -44,7 +44,7 @@ const __PEEK_INSPECTOR_VERSION = "0.5.10";
 
   // ─── State ───
   let mode = null; // 'region' | 'select' | 'annotate' | null
-  let overlay, toolbar, subtoolbar, highlightBox, regionBox, canvas, canvasCtx, sendBar;
+  let overlay, toolbar, subtoolbar, modeTip, highlightBox, regionBox, canvas, canvasCtx, sendBar;
   let regionStart = null;
   let drawing = false;
   let savedScroll = { x: 0, y: 0 }; // saved scroll position for annotate mode
@@ -413,6 +413,65 @@ const __PEEK_INSPECTOR_VERSION = "0.5.10";
     subtoolbar.appendChild(sendBtn);
   }
 
+  // ─── Mode hint: tiny caption under the pill while a mode is active ───
+  // Just enough to remind users Esc bails out — easy to forget once you've
+  // committed to a selection and realised you wanted to scroll or undo.
+  function createModeTip() {
+    modeTip = document.createElement("div");
+    modeTip.id = NS + "mode_tip";
+    Object.assign(modeTip.style, {
+      position: "absolute",
+      display: "none",
+      left: "50%",
+      transform: "translateX(-50%)",
+      whiteSpace: "nowrap",
+      padding: "2px 10px",
+      background: "rgba(15, 23, 42, 0.7)",
+      color: "rgba(255, 255, 255, 0.6)",
+      fontSize: "10.5px",
+      fontFamily: "-apple-system, system-ui, sans-serif",
+      borderRadius: "10px",
+      pointerEvents: "none",
+      userSelect: "none",
+      letterSpacing: "0.2px",
+    });
+  }
+
+  function updateModeTip() {
+    if (!modeTip) return;
+    const messages = {
+      region: "Drag to select  ·  Esc to cancel",
+      select: "Click an element  ·  Esc to cancel",
+      annotate: "Draw, then Send  ·  Esc to cancel",
+    };
+    const msg = messages[mode];
+    if (!msg) { modeTip.style.display = "none"; return; }
+    modeTip.textContent = msg;
+    modeTip.style.display = "block";
+    positionModeTip();
+  }
+
+  function positionModeTip() {
+    if (!modeTip || modeTip.style.display === "none") return;
+    // Stack below the subpanel when the subpanel is below the pill;
+    // above the subpanel when the subpanel flipped above.
+    const subVisible = subtoolbar && subtoolbar.style.display !== "none";
+    if (subVisible) {
+      const subBelow = subtoolbar.style.top !== "auto" && subtoolbar.style.top !== "";
+      const subH = subtoolbar.offsetHeight || 32;
+      if (subBelow) {
+        modeTip.style.top = `calc(100% + 6px + ${subH}px + 4px)`;
+        modeTip.style.bottom = "auto";
+      } else {
+        modeTip.style.bottom = `calc(100% + 6px + ${subH}px + 4px)`;
+        modeTip.style.top = "auto";
+      }
+    } else {
+      modeTip.style.top = "calc(100% + 6px)";
+      modeTip.style.bottom = "auto";
+    }
+  }
+
   // Flip sub-panel above the pill if there's no room below
   function positionSubpanel() {
     if (!subtoolbar || subtoolbar.style.display === "none") return;
@@ -497,6 +556,10 @@ const __PEEK_INSPECTOR_VERSION = "0.5.10";
     createAnnotateSubpanel();
     toolbar.appendChild(subtoolbar);
 
+    // Mode tip — tiny caption below the pill while a mode is active.
+    createModeTip();
+    toolbar.appendChild(modeTip);
+
     // Keep the user's page-level popovers / dropdowns / collapsibles open
     // while they interact with Peek. Two protections:
     //   - preventDefault on mousedown: buttons never receive focus, so the
@@ -555,8 +618,9 @@ const __PEEK_INSPECTOR_VERSION = "0.5.10";
       toolbar.style.left = newLeft + "px";
       toolbar.style.top = newTop + "px";
       toolbar.style.right = "auto";
-      // Keep sub-panel on the visible side of the pill while dragging
+      // Keep sub-panel + mode tip on the visible side of the pill while dragging
       positionSubpanel();
+      positionModeTip();
       e.preventDefault();
     }
     function onDragEnd() {
@@ -881,6 +945,7 @@ const __PEEK_INSPECTOR_VERSION = "0.5.10";
       subtoolbar.style.display = "flex";
       positionSubpanel();
     }
+    updateModeTip();
   }
 
   function cleanupMode() {
@@ -890,6 +955,7 @@ const __PEEK_INSPECTOR_VERSION = "0.5.10";
     canvas?.remove(); canvas = null;
     sendBar?.remove(); sendBar = null;
     if (subtoolbar) subtoolbar.style.display = "none";
+    if (modeTip) modeTip.style.display = "none";
     regionStart = null;
     drawing = false;
     pendingCapture = null;
