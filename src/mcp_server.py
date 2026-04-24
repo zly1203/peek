@@ -290,47 +290,37 @@ def run(host: str = "127.0.0.1", port: int = 8899):
         else:
             logger.info(f"Bridge server started on {host}:{port}")
 
-    # Ctrl+C handling: first press triggers graceful shutdown; second press
-    # skips the wait and exits immediately. Without this, users impatient
-    # with the 1-2 second graceful-shutdown wait press Ctrl+C twice anyway
-    # and can see confusing "^C^C" in the output.
+    # Ctrl+C handling: exit immediately. Graceful shutdown is overkill for a
+    # CLI tool — the OS reaps our daemon threads and the Playwright subprocess
+    # notices its parent's stdin pipe close and exits on its own within a
+    # second. Previous versions waited up to ~2s for "graceful" cleanup which
+    # users read as lag and pressed Ctrl+C again anyway.
     import signal
-    _sigint_count = [0]
-    _default_sigint = signal.getsignal(signal.SIGINT)
 
     def _handle_sigint(signum, frame):
-        _sigint_count[0] += 1
-        if _sigint_count[0] == 1:
-            if sys.stdin.isatty():
-                print(
-                    "\n  Shutting down Peek... (press Ctrl+C again to force quit)",
-                    file=sys.stderr,
-                )
-            # Let the default handler raise KeyboardInterrupt so mcp.run()
-            # unwinds through its normal exit path (our finally block runs).
-            if callable(_default_sigint):
-                _default_sigint(signum, frame)
-        else:
-            # User is impatient — bail out now, skip graceful cleanup.
-            # Daemon threads get reaped by the OS.
-            os._exit(130)  # 128 + SIGINT
+        if sys.stdin.isatty():
+            print("\n  Shutting down Peek...", file=sys.stderr, flush=True)
+        # Give uvicorn a nudge so the bridge loop can record its own exit
+        # state cleanly, but don't wait for it.
+        if _bridge_server:
+            _bridge_server.should_exit = True
+        os._exit(130)  # 128 + SIGINT
 
     signal.signal(signal.SIGINT, _handle_sigint)
 
     try:
         mcp.run()
     except KeyboardInterrupt:
-        pass  # message already printed by _handle_sigint
+        pass  # signal handler already exited; this is defensive
     finally:
-        # Graceful shutdown of bridge server and browser. Short timeouts —
-        # we'd rather exit a touch dirty than make the user wait.
+        # Only runs for non-SIGINT exits (e.g. MCP client closed stdio).
         if _bridge_server:
             _bridge_server.should_exit = True
         try:
             asyncio.get_event_loop().run_until_complete(_shutdown_browser())
         except Exception:
             pass
-        bridge_thread.join(timeout=1.0)
+        bridge_thread.join(timeout=0.5)
 
 
 if __name__ == "__main__":

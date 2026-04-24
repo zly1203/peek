@@ -3,7 +3,7 @@
  * Provides region select, element select, and annotation modes.
  * Sends captures to bridge server at localhost:8899.
  */
-const __PEEK_INSPECTOR_VERSION = "0.5.9";
+const __PEEK_INSPECTOR_VERSION = "0.5.10";
 
 (function () {
   if (window.__inspectorActive) {
