@@ -3,24 +3,38 @@
  * Provides region select, element select, and annotation modes.
  * Sends captures to bridge server at localhost:8899.
  */
-const __PEEK_INSPECTOR_VERSION = "0.5.4";
+const __PEEK_INSPECTOR_VERSION = "0.5.5";
 
 (function () {
   if (window.__inspectorActive) {
-    // Same page, already loaded. If version differs, user is on a
-    // stale copy after a server upgrade — ask them to reload.
-    if (window.__inspectorVersion !== __PEEK_INSPECTOR_VERSION) {
-      const prev = window.__inspectorVersion || "pre-0.5";
+    const prev = window.__inspectorVersion || "pre-0.5";
+    if (prev === __PEEK_INSPECTOR_VERSION) {
+      // Same version already running — nothing to do.
+      return;
+    }
+    // Version mismatch. Prefer graceful takeover: tear down the old
+    // instance in place and continue with fresh init below. This turns
+    // upgrades into a no-op for the user — no alert, no page reload.
+    // Requires the previously-loaded version to expose window.__peekTeardown
+    // (introduced in v0.5.5). Older versions don't have it, so fall back
+    // to the reload alert for one more upgrade cycle, then the world is
+    // seamless.
+    if (typeof window.__peekTeardown === "function") {
+      try { window.__peekTeardown(); }
+      catch (e) { console.warn(`[Peek] old teardown (${prev}) failed, reload the page:`, e); return; }
+      console.info(`[Peek] Upgraded ${prev} → ${__PEEK_INSPECTOR_VERSION} in place.`);
+    } else {
       console.warn(
-        `[Peek] Version mismatch on this page (loaded: ${prev}, latest: ${__PEEK_INSPECTOR_VERSION}). ` +
-        `Reload to use the new version.`
+        `[Peek] ${prev} is running but has no teardown hook. ` +
+        `Reload the page to use ${__PEEK_INSPECTOR_VERSION}.`
       );
       alert(
         `Peek has been upgraded (was ${prev}, now ${__PEEK_INSPECTOR_VERSION}).\n\n` +
-        `Please reload this page to use the new version.`
+        `Please reload this page to use the new version.\n` +
+        `From ${__PEEK_INSPECTOR_VERSION} onward, future upgrades happen automatically without a reload.`
       );
+      return;
     }
-    return;
   }
   window.__inspectorActive = true;
   window.__inspectorVersion = __PEEK_INSPECTOR_VERSION;
@@ -1018,7 +1032,14 @@ const __PEEK_INSPECTOR_VERSION = "0.5.4";
     document.removeEventListener("keydown", handleKeydown, true);
     window.__inspectorActive = false;
     window.__inspectorLoaded = false;
+    delete window.__inspectorVersion;
+    delete window.__peekTeardown;
   }
+
+  // Expose the teardown globally so the next-loaded inspector.js version
+  // can cleanly take over without the user having to reload the page.
+  // See the version-mismatch branch at the top of this IIFE.
+  window.__peekTeardown = destroy;
 
   // ─── Init ───
   createToolbar();
