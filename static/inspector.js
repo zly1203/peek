@@ -3,9 +3,15 @@
  * Provides region select, element select, and annotation modes.
  * Sends captures to bridge server at localhost:8899.
  */
-const __PEEK_INSPECTOR_VERSION = "0.5.11";
-
 (function () {
+  // Keep the version constant INSIDE the IIFE — not at script top level.
+  // Top-level `const` goes into the global Script scope and persists across
+  // script reloads, so re-running inspector.js after a destroy() (e.g. user
+  // clicked ✕ and then re-clicked the bookmarklet) would throw
+  // "already declared" and the IIFE never runs. Locally scoped means each
+  // load gets a fresh binding.
+  const __PEEK_INSPECTOR_VERSION = "0.5.12";
+
   if (window.__inspectorActive) {
     const prev = window.__inspectorVersion || "pre-0.5";
     if (prev === __PEEK_INSPECTOR_VERSION) {
@@ -13,12 +19,8 @@ const __PEEK_INSPECTOR_VERSION = "0.5.11";
       return;
     }
     // Version mismatch. Prefer graceful takeover: tear down the old
-    // instance in place and continue with fresh init below. This turns
-    // upgrades into a no-op for the user — no alert, no page reload.
-    // Requires the previously-loaded version to expose window.__peekTeardown
-    // (introduced in v0.5.5). Older versions don't have it, so fall back
-    // to the reload alert for one more upgrade cycle, then the world is
-    // seamless.
+    // instance in place and continue with fresh init below. Requires the
+    // previously-loaded version to expose window.__peekTeardown (v0.5.5+).
     if (typeof window.__peekTeardown === "function") {
       try { window.__peekTeardown(); }
       catch (e) { console.warn(`[Peek] old teardown (${prev}) failed, reload the page:`, e); return; }
@@ -422,8 +424,9 @@ const __PEEK_INSPECTOR_VERSION = "0.5.11";
     Object.assign(modeTip.style, {
       position: "absolute",
       display: "none",
-      left: "50%",
-      transform: "translateX(-50%)",
+      // Match subpanel's left-edge alignment with the pill so everything
+      // stacks in a single clean column below the toolbar.
+      left: "0",
       whiteSpace: "nowrap",
       padding: "2px 10px",
       background: "rgba(15, 23, 42, 0.7)",
