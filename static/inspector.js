@@ -3,7 +3,7 @@
  * Provides region select, element select, and annotation modes.
  * Sends captures to bridge server at localhost:8899.
  */
-const __PEEK_INSPECTOR_VERSION = "0.5.8";
+const __PEEK_INSPECTOR_VERSION = "0.5.9";
 
 (function () {
   if (window.__inspectorActive) {
@@ -513,11 +513,15 @@ const __PEEK_INSPECTOR_VERSION = "0.5.8";
     // does not blur — preserves popovers that dismiss on focus loss. We
     // intentionally do NOT stopPropagation in capture phase because that
     // would kill our own button click handlers before they run.
+    //
+    // Only hook `mousedown`, not `pointerdown`: preventDefault on a
+    // pointerdown suppresses the follow-up compat mousedown per the
+    // Pointer Events spec, which breaks our drag-handle listener (target
+    // phase mousedown never fires → dragState never gets set).
     const captureGuard = (e) => {
       if (toolbar && toolbar.contains(e.target)) e.preventDefault();
     };
     document.addEventListener("mousedown", captureGuard, true);
-    document.addEventListener("pointerdown", captureGuard, true);
 
     toolbar.addEventListener("mousedown", (e) => {
       e.preventDefault();
@@ -527,7 +531,6 @@ const __PEEK_INSPECTOR_VERSION = "0.5.8";
 
     toolbar.__captureBlocker = () => {
       document.removeEventListener("mousedown", captureGuard, true);
-      document.removeEventListener("pointerdown", captureGuard, true);
     };
 
     document.body.appendChild(toolbar);
