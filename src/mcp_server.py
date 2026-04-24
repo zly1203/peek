@@ -290,23 +290,47 @@ def run(host: str = "127.0.0.1", port: int = 8899):
         else:
             logger.info(f"Bridge server started on {host}:{port}")
 
-    # Run MCP server on main thread (stdio). KeyboardInterrupt is the expected
-    # way to stop — swallow it so the user doesn't see a traceback.
+    # Ctrl+C handling: first press triggers graceful shutdown; second press
+    # skips the wait and exits immediately. Without this, users impatient
+    # with the 1-2 second graceful-shutdown wait press Ctrl+C twice anyway
+    # and can see confusing "^C^C" in the output.
+    import signal
+    _sigint_count = [0]
+    _default_sigint = signal.getsignal(signal.SIGINT)
+
+    def _handle_sigint(signum, frame):
+        _sigint_count[0] += 1
+        if _sigint_count[0] == 1:
+            if sys.stdin.isatty():
+                print(
+                    "\n  Shutting down Peek... (press Ctrl+C again to force quit)",
+                    file=sys.stderr,
+                )
+            # Let the default handler raise KeyboardInterrupt so mcp.run()
+            # unwinds through its normal exit path (our finally block runs).
+            if callable(_default_sigint):
+                _default_sigint(signum, frame)
+        else:
+            # User is impatient — bail out now, skip graceful cleanup.
+            # Daemon threads get reaped by the OS.
+            os._exit(130)  # 128 + SIGINT
+
+    signal.signal(signal.SIGINT, _handle_sigint)
+
     try:
         mcp.run()
     except KeyboardInterrupt:
-        if sys.stdin.isatty():
-            print("\n  Shutting down Peek...", file=sys.stderr)
+        pass  # message already printed by _handle_sigint
     finally:
-        # Graceful shutdown of bridge server and browser
+        # Graceful shutdown of bridge server and browser. Short timeouts —
+        # we'd rather exit a touch dirty than make the user wait.
         if _bridge_server:
             _bridge_server.should_exit = True
         try:
             asyncio.get_event_loop().run_until_complete(_shutdown_browser())
         except Exception:
             pass
-        # Give the bridge thread a moment to exit cleanly
-        bridge_thread.join(timeout=2)
+        bridge_thread.join(timeout=1.0)
 
 
 if __name__ == "__main__":

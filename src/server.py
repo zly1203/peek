@@ -159,7 +159,7 @@ SETUP_HTML = """<!DOCTYPE html>
 <p><b>Drag the button below to your bookmark bar.</b> That's it — you can close this tab after.</p>
 
 <p style="text-align:center; margin: 32px 0;">
-  <a class="bookmarklet" href="javascript:(function(){var s=document.createElement('script');s.src='http://localhost:8899/static/inspector.js?t='+Date.now();document.head.appendChild(s)})()">
+  <a class="bookmarklet" href="javascript:(function(){var s=document.createElement('script');s.src='http://localhost:8899/static/inspector.js?t='+Date.now();s.onerror=function(){var d=document.createElement('div');d.style.cssText='position:fixed;top:16px;left:50%;transform:translateX(-50%);background:rgb(239,68,68);color:white;padding:12px 16px;border-radius:8px;font-family:-apple-system,sans-serif;font-size:13px;z-index:2147483647;box-shadow:0 4px 16px rgba(0,0,0,0.25);cursor:pointer;max-width:90vw;text-align:center';d.textContent='Peek bridge not running. Open Claude Code (it auto-starts peek) or run peek mcp in a terminal, then click Peek again.';d.onclick=function(){d.remove();};document.body.appendChild(d);setTimeout(function(){d.remove();},10000);};document.head.appendChild(s);})()">
     Peek
   </a>
 </p>
