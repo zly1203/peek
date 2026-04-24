@@ -6,7 +6,10 @@ from unittest.mock import patch, MagicMock
 
 
 def test_cli_help(capsys):
-    """CLI --help shows peek with serve and mcp commands."""
+    """CLI --help shows peek with the user-facing subcommands.
+
+    `serve` was removed in v0.5.7 (consolidated into `mcp`). `setup` and
+    `mcp` are what users actually see."""
     with patch("sys.argv", ["peek", "--help"]):
         with pytest.raises(SystemExit) as exc_info:
             from src.cli import main
@@ -15,21 +18,8 @@ def test_cli_help(capsys):
 
     captured = capsys.readouterr()
     assert "peek" in captured.out
-    assert "serve" in captured.out
+    assert "setup" in captured.out
     assert "mcp" in captured.out
-
-
-def test_cli_serve_help(capsys):
-    """serve --help shows port and host options."""
-    with patch("sys.argv", ["peek", "serve", "--help"]):
-        with pytest.raises(SystemExit) as exc_info:
-            from src.cli import main
-            main()
-        assert exc_info.value.code == 0
-
-    captured = capsys.readouterr()
-    assert "--port" in captured.out
-    assert "--host" in captured.out
 
 
 def test_cli_mcp_help(capsys):

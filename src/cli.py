@@ -6,6 +6,32 @@ import shutil
 import subprocess
 import sys
 import webbrowser
+from pathlib import Path
+
+
+PEEK_DIR = Path.home() / ".peek"
+BOOKMARKLET_FILE = PEEK_DIR / "bookmarklet.html"
+
+
+def _write_bookmarklet_file() -> Path:
+    """Write the bookmarklet HTML to ~/.peek/bookmarklet.html and return its path.
+    The file is self-contained — no server needed to view or drag from it."""
+    from .server import SETUP_HTML
+    PEEK_DIR.mkdir(parents=True, exist_ok=True)
+    BOOKMARKLET_FILE.write_text(SETUP_HTML)
+    return BOOKMARKLET_FILE
+
+
+def _open_bookmarklet_page():
+    """Write the bookmarklet HTML locally and open it in the default browser.
+    Returns True on success."""
+    try:
+        path = _write_bookmarklet_file()
+        webbrowser.open(path.as_uri())
+        return True
+    except Exception as e:
+        print(f"  Failed to open bookmarklet page: {e}", file=sys.stderr)
+        return False
 
 
 def _check_playwright(verbose: bool = False):
@@ -115,9 +141,9 @@ def _add_claude_mcp():
 
 
 def _setup():
-    """Run the one-shot setup wizard. Detects already-installed state and
-    short-circuits, so users who run `peek setup` on an upgrade don't get
-    walked through the drag-the-bookmarklet flow again."""
+    """One-shot setup: install Playwright, register Claude Code MCP, drop the
+    bookmarklet HTML locally and open it in the browser. Then exit. No
+    long-running server — `peek setup` runs and returns like `npm install`."""
     print()
     print("  Peek setup")
     print("  ──────────")
@@ -126,24 +152,22 @@ def _setup():
     playwright_ok = _check_playwright()
     claude_ok = _detect_claude_code() and _claude_mcp_registered_correctly()
 
-    # Fast path: everything already in place. Don't open a browser, don't
-    # start the MCP server, don't re-print the drag instructions. Just
-    # confirm state and exit.
+    # Fast path: everything already in place. Reopen the local bookmarklet
+    # file in case that's why the user invoked setup, then exit.
     if playwright_ok and claude_ok:
         print("  ✓ Already set up")
         print("    • Playwright Chromium: installed")
         print("    • Claude Code MCP: registered")
         print()
-        print("  Nothing to do here. Close this terminal and use Claude Code as usual —")
+        print("  Nothing to do. Close this terminal and use Claude Code as usual —")
         print("  it'll launch peek in the background when an agent needs it.")
         print()
-        print("  Your existing bookmarklet in the bookmark bar keeps working (from v0.5+).")
-        print("  Need the bookmarklet page again? Open http://localhost:8899 while")
-        print("  Claude Code is running (it has peek mcp running in the background).")
+        print(f"  Need the bookmarklet again? {BOOKMARKLET_FILE} is always there —")
+        print("  opening it now in your browser.")
+        _open_bookmarklet_page()
         print()
         return
 
-    # First-time install (or partial install) — run the wizard.
     # Step 1: Playwright
     print("  [1/3] Checking Playwright Chromium...")
     if playwright_ok:
@@ -171,35 +195,33 @@ def _setup():
             print("        You can add it manually later:")
             print("          claude mcp add -s user peek -- $(which peek) mcp")
 
-    # Step 3: Bookmarklet
-    print("\n  [3/3] Setting up bookmarklet...")
-    print("        Opening http://localhost:8899 in your browser")
-    print("        Drag the blue 'Peek' button to your bookmark bar.\n")
+    # Step 3: bookmarklet page — local file, no server needed.
+    print("\n  [3/3] Opening bookmarklet page in your browser...")
+    path = _write_bookmarklet_file()
+    print(f"        {path}")
+    print("        Drag the blue 'Peek' button to your bookmark bar.")
+    try:
+        webbrowser.open(path.as_uri())
+    except Exception:
+        pass
 
-    # Add CLAUDE.md hint
-    print("  Recommended: add this to your project's CLAUDE.md so AI knows your dev port:")
+    # Optional CLAUDE.md hint
+    print()
+    print("  Recommended: add this to your project's CLAUDE.md so the agent")
+    print("  knows your dev port:")
     print()
     print("    Dev server runs on http://localhost:3000")
     print("    When using Peek's screenshot tool, ask me which port the app is")
     print("    running on if you don't know.")
     print()
     print("  ──────────────────────────────────────────────────────────────")
-    print("  Setup complete.")
+    print("  Setup complete. You can close this terminal.")
     print()
-    print("  Starting peek mcp now so you can drag the bookmarklet from the")
-    print("  page that just opened. Once you've dragged the button, press")
-    print("  Ctrl+C to stop this process — Claude Code will launch its own")
-    print("  peek mcp automatically whenever it needs one.")
-    print("  ──────────────────────────────────────────────────────────────\n")
-
-    # Open browser then start server
-    try:
-        webbrowser.open("http://localhost:8899")
-    except Exception:
-        pass
-
-    from .mcp_server import run
-    run()
+    print("  From here on: open Claude Code and use it normally — it'll")
+    print("  launch peek in the background whenever an agent uses a Peek")
+    print("  tool. No `peek` command needs to keep running.")
+    print("  ──────────────────────────────────────────────────────────────")
+    print()
 
 
 def _print_status_and_next_steps():
@@ -239,8 +261,11 @@ def _print_status_and_next_steps():
         print()
         print("    • Using Claude Code? Just open it and ask the agent to screenshot a")
         print("      page or check your bookmarklet selection. Peek auto-launches.")
-        print("    • First time? Open http://localhost:8899 (while Claude Code is")
-        print("      running) and drag the blue button to your bookmark bar, once.")
+        if BOOKMARKLET_FILE.exists():
+            print(f"    • Need the bookmarklet again? Open {BOOKMARKLET_FILE}")
+            print("      in your browser and drag the blue button to your bookmark bar.")
+        else:
+            print("    • First time? Run `peek setup` to get the bookmarklet page.")
     elif not playwright_ok or (claude_installed and not claude_registered):
         print("  → Run `peek setup` to finish configuring Peek.")
     else:
@@ -277,25 +302,13 @@ def main():
     mcp_parser.add_argument("--port", type=int, default=8899, help="Bridge server port (default: 8899)")
     mcp_parser.add_argument("--host", default="127.0.0.1", help="Bridge server host (default: 127.0.0.1)")
 
-    # peek serve (advanced — hide from default help output to reduce confusion)
-    serve_parser = sub.add_parser(
-        "serve",
-        help=argparse.SUPPRESS,
-    )
-    serve_parser.add_argument("--port", type=int, default=8899, help="Port (default: 8899)")
-    serve_parser.add_argument("--host", default="127.0.0.1", help="Host (default: 127.0.0.1)")
-
     args = parser.parse_args()
 
-    if args.command in ("serve", "mcp"):
+    if args.command == "mcp":
         _ensure_playwright()
 
     if args.command == "setup":
         _setup()
-    elif args.command == "serve":
-        from .server import app
-        import uvicorn
-        uvicorn.run(app, host=args.host, port=args.port)
     elif args.command == "mcp":
         from .mcp_server import run
         run(host=args.host, port=args.port)

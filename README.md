@@ -24,7 +24,9 @@ uv tool install peek-mcp
 peek setup
 ```
 
-`peek setup` does everything for you: installs Playwright Chromium, registers Peek as an MCP server in Claude Code (user scope, all projects), opens the bookmarklet page in your browser. Just drag the blue button to your bookmark bar.
+`peek setup` is one-shot: installs Playwright Chromium, registers Peek as an MCP server in Claude Code (user scope, all projects), drops the bookmarklet page at `~/.peek/bookmarklet.html` and opens it in your browser. Drag the blue button to your bookmark bar and you're done — the command exits on its own. Nothing to keep running.
+
+From then on: **open Claude Code and use it normally.** It auto-launches Peek in the background whenever the agent uses a Peek tool.
 
 > Using pip directly? `pip install peek-mcp` works too, but requires Python 3.10+ already installed. `uv tool install` avoids the version-mismatch headache.
 
@@ -40,7 +42,7 @@ Three steps because three layers hold a copy of the code: disk (fixed by `uv too
 
 > Don't run `peek setup` to upgrade. `peek setup` is for first-time installs. From v0.5.4 it detects an existing install and exits cleanly, but earlier versions would re-walk you through the bookmarklet drag flow unnecessarily.
 
-**Upgrading from v0.4 → v0.5.x**: also re-drag the blue button from `http://localhost:8899` to your bookmark bar once. The v0.4 bookmarklet JS had a caching gate that v0.5 removed. Future upgrades within the v0.5 line do not require re-dragging.
+**Upgrading from v0.4 → v0.5.x**: re-drag the blue button from `~/.peek/bookmarklet.html` (or re-run `peek setup`, which opens it for you) once. The v0.4 bookmarklet JS had a caching gate that v0.5 removed. Future upgrades within the v0.5 line do not require re-dragging.
 
 ### Other AI tools (Cursor / Windsurf / Claude Desktop)
 
@@ -62,7 +64,7 @@ Add to your MCP config file (e.g. `.cursor/mcp.json`, `~/.codeium/windsurf/mcp_c
 }
 ```
 
-Run `which peek` in your terminal to get the absolute path. Then visit http://localhost:8899 to grab the bookmarklet.
+Run `which peek` in your terminal to get the absolute path. Drag the bookmarklet from `~/.peek/bookmarklet.html` (`peek setup` creates it) — no server needed.
 
 ### Recommended: tell your agent your dev port
 
@@ -84,8 +86,8 @@ Just ask your agent — "screenshot the page", "take a look at localhost:3000", 
 
 **User-pointed captures (bookmarklet):**
 
-1. Run `peek mcp` (or let your AI tool start it via MCP)
-2. Open http://localhost:8899, drag the blue button to your bookmark bar
+1. One-time: drag the blue button from `~/.peek/bookmarklet.html` (or any other browser's copy of it) to your bookmark bar
+2. Start your AI tool (Claude Code / Cursor / etc.) — it launches peek in the background
 3. Open your app, click the bookmarklet, pick a mode:
 
 | Mode | Shortcut | You do | Agent gets |
@@ -165,9 +167,12 @@ Peek's bridge server (which the bookmarklet talks to at `localhost:8899`) isn't 
 
 - **Open Claude Code.** Once it starts, it auto-launches `peek mcp`. Reload your page, click the bookmarklet again.
 - **Or run `peek mcp` in a terminal manually.** Keep the terminal open while you use Peek. Ctrl+C when done.
-- **If you changed the bridge port with `--port`:** re-drag the bookmarklet from `http://localhost:<new-port>` — the bookmarklet has the old port baked in.
 
 To see what state Peek is in, run `peek` with no arguments — it prints install status and tells you what, if anything, to do next.
+
+**Need the bookmarklet page again**
+
+It lives at `~/.peek/bookmarklet.html` after `peek setup`. Open that file in any browser and drag the blue button — no server required.
 
 **`peek: command not found` after install**
 
@@ -181,7 +186,7 @@ Your Python is older than 3.10 (common on macOS system Python). Switch to `uv to
 
 **Using Peek from Safari, Firefox, or a different Chrome profile**
 
-The bookmarklet lives in each browser's bookmark bar independently — there's no cross-browser sync. To use it in another browser, open `http://localhost:8899` in that browser and drag the blue "Peek" button to its bookmark bar. One-time setup per browser. The `screenshot` tool itself is browser-agnostic (it uses Playwright's own headless Chromium), so it works regardless of which browser you develop in.
+The bookmarklet lives in each browser's bookmark bar independently — there's no cross-browser sync. To use it in another browser, open `~/.peek/bookmarklet.html` in that browser and drag the blue "Peek" button to its bookmark bar. One-time setup per browser, and no server needed — it's a local file. The `screenshot` tool itself is browser-agnostic (it uses Playwright's own headless Chromium), so it works regardless of which browser you develop in.
 
 **Screenshot shows a blank or default page instead of what I see**
 
@@ -205,8 +210,10 @@ The bookmarklet lives in each browser's bookmark bar independently — there's n
 ## CLI
 
 ```bash
-peek mcp                  # start everything (recommended)
-peek mcp --port 9000      # different bridge port
+peek                      # status + next step (most users just need this)
+peek setup                # one-shot: install, register MCP, drop bookmarklet page
+peek mcp                  # advanced — Claude Code auto-launches this
+peek mcp --port 9000      # advanced — different bridge port
 ```
 
 ## Requirements

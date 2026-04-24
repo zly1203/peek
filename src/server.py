@@ -141,7 +141,7 @@ SETUP_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Peek Setup</title>
+<title>Peek — Bookmarklet</title>
 <style>
   body { font-family: -apple-system, system-ui, sans-serif; max-width: 640px; margin: 60px auto; padding: 0 20px; color: #1a1a1a; line-height: 1.6; }
   h1 { font-size: 1.5rem; }
@@ -151,11 +151,12 @@ SETUP_HTML = """<!DOCTYPE html>
   .step b { color: #2563eb; }
   code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
   .keys { display: inline-block; padding: 2px 8px; background: #e2e8f0; border-radius: 4px; font-family: monospace; font-size: 0.85em; border: 1px solid #cbd5e1; }
+  .muted { color: #64748b; font-size: 0.9em; }
 </style>
 </head>
 <body>
 <h1>Peek</h1>
-<p><b>Drag the button below to your bookmark bar</b>, then click it on any local dev page.</p>
+<p><b>Drag the button below to your bookmark bar.</b> That's it — you can close this tab after.</p>
 
 <p style="text-align:center; margin: 32px 0;">
   <a class="bookmarklet" href="javascript:(function(){var s=document.createElement('script');s.src='http://localhost:8899/static/inspector.js?t='+Date.now();document.head.appendChild(s)})()">
@@ -163,17 +164,18 @@ SETUP_HTML = """<!DOCTYPE html>
   </a>
 </p>
 
-<div class="step"><b>Step 1</b> — Keep this service running: <code>peek mcp</code></div>
-<div class="step"><b>Step 2</b> — Drag the blue "Peek" button above to your browser's bookmark bar</div>
-<div class="step"><b>Step 3</b> — Open any local dev page (localhost, 127.0.0.1, .local, LAN IP, etc.) and click "Peek" in your bookmarks</div>
-<div class="step"><b>Step 4</b> — Pick a mode from the toolbar:
+<div class="step"><b>Step 1</b> — Drag the blue "Peek" button above to your browser's bookmark bar</div>
+<div class="step"><b>Step 2</b> — Open any local dev page (<code>localhost</code>, <code>127.0.0.1</code>, <code>.local</code>, LAN IP, etc.) and click "Peek" in your bookmarks</div>
+<div class="step"><b>Step 3</b> — Pick a mode from the toolbar:
   <ul style="margin:8px 0">
-    <li><span class="keys">Alt+A</span> Annotate — draw on the page (pen, rect, arrow)</li>
+    <li><span class="keys">Alt+A</span> Annotate — draw on the page (pen, rect)</li>
     <li><span class="keys">Alt+R</span> Region — drag a rectangle to capture an area</li>
     <li><span class="keys">Alt+S</span> Element — hover to highlight, click to select</li>
   </ul>
 </div>
-<div class="step"><b>Step 5</b> — After selecting/annotating, ask your AI agent to <code>get_user_selection()</code></div>
+<div class="step"><b>Step 4</b> — Ask your AI agent to <code>check my selection</code>; it calls <code>get_user_selection()</code> to read what you captured.</div>
+
+<p class="muted">The bookmarklet fetches Peek's inspector from <code>localhost:8899</code> when you click it, so Peek's bridge needs to be running at that moment — Claude Code launches it automatically, or you can run <code>peek mcp</code> in a terminal.</p>
 </body>
 </html>"""
 
