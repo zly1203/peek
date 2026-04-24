@@ -263,15 +263,24 @@ def run(host: str = "127.0.0.1", port: int = 8899):
         if bind_error:
             print(f"\n  ⚠ {bind_error[0]}\n", file=sys.stderr)
             print(
-                f"  MCP tools (screenshot / get_user_selection) still work,\n"
-                f"  but bookmarklet captures need the bridge on {url}.\n\n"
+                f"  Note: you usually don't need to run `peek mcp` manually —\n"
+                f"  Claude Code (and other MCP clients like Cursor, if configured)\n"
+                f"  launch it automatically when an agent uses a Peek tool. The\n"
+                f"  existing process on {url} is probably that.\n\n"
+                f"  If it's a stale/zombie process you want to replace:\n"
+                f"    pkill -f 'peek mcp'   # then re-run this command\n\n"
                 f"  Press Ctrl+C to stop.\n",
                 file=sys.stderr,
             )
         else:
             print(
                 f"\n  Peek bridge running on {url}\n"
-                f"  Open that URL if you need to (re)install the bookmarklet.\n\n"
+                f"  Open that URL in your browser if you need to (re)drag the\n"
+                f"  bookmarklet to your bookmark bar.\n\n"
+                f"  You usually don't need to keep this terminal open — Claude Code\n"
+                f"  will launch its own peek mcp whenever an agent uses a Peek tool.\n"
+                f"  This manual instance is useful for initial setup, for MCP clients\n"
+                f"  that don't auto-launch, or for debugging.\n\n"
                 f"  Press Ctrl+C to stop.\n",
                 file=sys.stderr,
             )

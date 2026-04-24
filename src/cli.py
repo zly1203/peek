@@ -132,11 +132,14 @@ def _setup():
     if playwright_ok and claude_ok:
         print("  ✓ Already set up")
         print("    • Playwright Chromium: installed")
-        print("    • Claude Code MCP: registered (mcp subcommand, correct binary path)")
+        print("    • Claude Code MCP: registered")
         print()
-        print("  Nothing to do. Your existing bookmarklet works as-is (from v0.5+).")
-        print("  If you need to (re)grab the bookmarklet, open http://localhost:8899")
-        print("  while Peek is running (`peek mcp` or via Claude Code).")
+        print("  Nothing to do here. Close this terminal and use Claude Code as usual —")
+        print("  it'll launch peek in the background when an agent needs it.")
+        print()
+        print("  Your existing bookmarklet in the bookmark bar keeps working (from v0.5+).")
+        print("  Need the bookmarklet page again? Open http://localhost:8899 while")
+        print("  Claude Code is running (it has peek mcp running in the background).")
         print()
         return
 
@@ -180,7 +183,14 @@ def _setup():
     print("    When using Peek's screenshot tool, ask me which port the app is")
     print("    running on if you don't know.")
     print()
-    print("  Starting peek mcp now (Ctrl+C to stop)...\n")
+    print("  ──────────────────────────────────────────────────────────────")
+    print("  Setup complete.")
+    print()
+    print("  Starting peek mcp now so you can drag the bookmarklet from the")
+    print("  page that just opened. Once you've dragged the button, press")
+    print("  Ctrl+C to stop this process — Claude Code will launch its own")
+    print("  peek mcp automatically whenever it needs one.")
+    print("  ──────────────────────────────────────────────────────────────\n")
 
     # Open browser then start server
     try:
@@ -192,25 +202,88 @@ def _setup():
     run()
 
 
+def _print_status_and_next_steps():
+    """Default output when someone runs `peek` with no subcommand.
+    Detects install state and tells the user what, if anything, to do next.
+    More useful than argparse's auto-generated help for non-CLI-savvy users."""
+    try:
+        from . import __version__ as version  # type: ignore
+    except Exception:
+        version = None
+
+    # Read version from pyproject if possible (editable install fallback)
+    if version is None:
+        try:
+            import importlib.metadata
+            version = importlib.metadata.version("peek-mcp")
+        except Exception:
+            version = "?"
+
+    playwright_ok = _check_playwright()
+    claude_installed = _detect_claude_code()
+    claude_registered = claude_installed and _claude_mcp_registered_correctly()
+
+    print()
+    print(f"  Peek {version} — status")
+    print("  " + "─" * 32)
+    print()
+    print(f"    Playwright Chromium : {'✓ installed' if playwright_ok else '✗ not installed'}")
+    if claude_installed:
+        print(f"    Claude Code MCP     : {'✓ registered' if claude_registered else '✗ not registered'}")
+    else:
+        print( "    Claude Code         : not detected (optional — see README for Cursor/Windsurf/etc.)")
+    print()
+
+    if playwright_ok and claude_registered:
+        print("  ✓ Peek is ready. You don't need to run any peek command.")
+        print()
+        print("    • Using Claude Code? Just open it and ask the agent to screenshot a")
+        print("      page or check your bookmarklet selection. Peek auto-launches.")
+        print("    • First time? Open http://localhost:8899 (while Claude Code is")
+        print("      running) and drag the blue button to your bookmark bar, once.")
+    elif not playwright_ok or (claude_installed and not claude_registered):
+        print("  → Run `peek setup` to finish configuring Peek.")
+    else:
+        # Playwright ok, Claude Code absent — user has another MCP client
+        print("  Peek's Python side is installed. For Claude Code users: run")
+        print("  `peek setup` to auto-register the MCP server. For other tools")
+        print("  (Cursor / Windsurf / Claude Desktop), see the README for the")
+        print("  MCP config snippet — the `command` value is `" + (shutil.which("peek") or "peek") + "` with `[\"mcp\"]` args.")
+
+    print()
+    print("  Run `peek --help` to see all subcommands (most are advanced).")
+    print()
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="peek",
         description="Let AI agents see your UI — visual inspection bridge for AI coding agents.",
+        epilog="Run `peek` with no arguments to see install status and next steps.",
     )
     sub = parser.add_subparsers(dest="command")
 
     # peek setup
-    sub.add_parser("setup", help="One-command setup: Playwright + Claude Code MCP + open bookmarklet page")
-
-    # peek serve
-    serve_parser = sub.add_parser("serve", help="Start the bridge server")
-    serve_parser.add_argument("--port", type=int, default=8899, help="Port (default: 8899)")
-    serve_parser.add_argument("--host", default="127.0.0.1", help="Host (default: 127.0.0.1)")
+    sub.add_parser(
+        "setup",
+        help="First-time setup: install Playwright Chromium, register the Claude Code MCP server, open the bookmarklet page. Safe to re-run on an already-configured machine (it detects state and exits).",
+    )
 
     # peek mcp
-    mcp_parser = sub.add_parser("mcp", help="Start as MCP server (stdio)")
+    mcp_parser = sub.add_parser(
+        "mcp",
+        help="Start the MCP server (stdio). Advanced — Claude Code (and most MCP clients) launch this for you automatically, so you rarely need to run it by hand.",
+    )
     mcp_parser.add_argument("--port", type=int, default=8899, help="Bridge server port (default: 8899)")
     mcp_parser.add_argument("--host", default="127.0.0.1", help="Bridge server host (default: 127.0.0.1)")
+
+    # peek serve (advanced — hide from default help output to reduce confusion)
+    serve_parser = sub.add_parser(
+        "serve",
+        help=argparse.SUPPRESS,
+    )
+    serve_parser.add_argument("--port", type=int, default=8899, help="Port (default: 8899)")
+    serve_parser.add_argument("--host", default="127.0.0.1", help="Host (default: 127.0.0.1)")
 
     args = parser.parse_args()
 
@@ -227,7 +300,7 @@ def main():
         from .mcp_server import run
         run(host=args.host, port=args.port)
     else:
-        parser.print_help()
+        _print_status_and_next_steps()
 
 
 if __name__ == "__main__":

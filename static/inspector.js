@@ -3,7 +3,7 @@
  * Provides region select, element select, and annotation modes.
  * Sends captures to bridge server at localhost:8899.
  */
-const __PEEK_INSPECTOR_VERSION = "0.5.5";
+const __PEEK_INSPECTOR_VERSION = "0.5.6";
 
 (function () {
   if (window.__inspectorActive) {
@@ -322,7 +322,7 @@ const __PEEK_INSPECTOR_VERSION = "0.5.5";
       showToast("Captured!");
       return result;
     } catch (e) {
-      showToast("Failed — is bridge server running?", true);
+      showToast("Peek bridge not running — open Claude Code (it starts peek automatically) or run `peek mcp` in a terminal.", true);
       console.error("Peek capture failed:", e);
     }
   }
@@ -573,6 +573,18 @@ const __PEEK_INSPECTOR_VERSION = "0.5.5";
   }
 
   // ─── Create overlay (used for region + select modes) ───
+  // Stop mouse events on Peek-owned full-viewport surfaces from reaching
+  // the page's document-level "click outside to close" dismissers. Without
+  // this, dragging on the overlay (Region mode) or drawing on the canvas
+  // (Annotate mode) would collapse popovers / expanders that happen to sit
+  // under the stroke.
+  function isolateEvents(el) {
+    const stop = (e) => e.stopPropagation();
+    ["mousedown", "click", "pointerdown"].forEach(evt =>
+      el.addEventListener(evt, stop)
+    );
+  }
+
   function createOverlay() {
     overlay = document.createElement("div");
     overlay.id = NS + "overlay";
@@ -580,6 +592,7 @@ const __PEEK_INSPECTOR_VERSION = "0.5.5";
       position: "fixed", top: "0", left: "0", right: "0", bottom: "0",
       zIndex: "2147483645", cursor: "default",
     });
+    isolateEvents(overlay);
     document.body.appendChild(overlay);
   }
 
@@ -687,6 +700,7 @@ const __PEEK_INSPECTOR_VERSION = "0.5.5";
     });
     canvasCtx = canvas.getContext("2d");
     canvasCtx.scale(dpr, dpr);
+    isolateEvents(canvas);
     document.body.appendChild(canvas);
 
 

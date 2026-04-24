@@ -159,9 +159,15 @@ Your dev server isn't running on that port. Start your dev server first, then as
 
 Add the `CLAUDE.md` snippet from step 3 above. Without it, the agent will guess.
 
-**Bookmarklet not working (click does nothing)**
+**Bookmarklet click does nothing**
 
-The Peek bridge server isn't running, or is on a different port. Start it via `peek mcp`, or let Claude Code launch it through MCP. If you changed the port with `--port`, re-drag the bookmarklet from the new URL — the old one points at the old port.
+Peek's bridge server (which the bookmarklet talks to at `localhost:8899`) isn't running. Usually this means Claude Code isn't open — Claude Code is what launches `peek mcp` in the background. Options:
+
+- **Open Claude Code.** Once it starts, it auto-launches `peek mcp`. Reload your page, click the bookmarklet again.
+- **Or run `peek mcp` in a terminal manually.** Keep the terminal open while you use Peek. Ctrl+C when done.
+- **If you changed the bridge port with `--port`:** re-drag the bookmarklet from `http://localhost:<new-port>` — the bookmarklet has the old port baked in.
+
+To see what state Peek is in, run `peek` with no arguments — it prints install status and tells you what, if anything, to do next.
 
 **`peek: command not found` after install**
 

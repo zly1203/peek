@@ -26,10 +26,23 @@ async def lifespan(app: FastAPI):
     pw = await async_playwright().start()
     browser = await pw.chromium.launch(headless=True)
     print("Playwright Chromium launched")
-    yield
-    await browser.close()
-    await pw.stop()
-    print("Playwright closed")
+    try:
+        yield
+    finally:
+        # On Ctrl+C the Playwright transport may already be tearing down by
+        # the time we reach shutdown — browser.close() would raise
+        # "unable to perform operation on <WriteUnixTransport closed=True>"
+        # and uvicorn surfaces it as "Application shutdown failed". The OS
+        # reaps the subprocess regardless, so swallow both errors.
+        try:
+            await browser.close()
+        except Exception:
+            pass
+        try:
+            await pw.stop()
+        except Exception:
+            pass
+        print("Playwright closed")
 
 
 app = FastAPI(lifespan=lifespan)
