@@ -198,8 +198,13 @@ async def get_user_selection() -> list:
 _bridge_server = None  # uvicorn.Server reference for graceful shutdown
 
 
-def _run_bridge_server(host: str, port: int):
-    """Run the FastAPI bridge server in a background thread with its own event loop."""
+def _run_bridge_server(host: str, port: int, ready_event: threading.Event, bind_error: list):
+    """Run the FastAPI bridge server in a background thread with its own event loop.
+
+    ready_event: set once the server is either listening or has failed to bind.
+    bind_error:  caller-supplied list; we append a human-readable string if the
+                 port is already taken, so the main thread can surface it cleanly.
+    """
     global _bridge_server
     import uvicorn
     from .server import app
@@ -209,46 +214,80 @@ def _run_bridge_server(host: str, port: int):
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+
+    # Signal "ready" once uvicorn starts (or fails) so the parent can print its
+    # banner after any startup noise has settled.
+    async def _serve_with_signal():
+        task = asyncio.create_task(_bridge_server.serve())
+        # Poll briefly until uvicorn reports started, or task errors out.
+        for _ in range(50):  # up to ~5 s
+            if _bridge_server.started or task.done():
+                break
+            await asyncio.sleep(0.1)
+        ready_event.set()
+        await task
+
     try:
-        loop.run_until_complete(_bridge_server.serve())
+        loop.run_until_complete(_serve_with_signal())
     except OSError as e:
         if "address already in use" in str(e).lower() or e.errno == 48:
-            logger.warning(f"Port {port} already in use — bridge server skipped (MCP tools still work)")
+            bind_error.append(
+                f"Port {port} is already in use — another `peek mcp` is probably running. "
+                f"Stop it first (`pkill -f 'peek mcp'`) or use --port to pick a different port."
+            )
         else:
-            raise
+            bind_error.append(str(e))
+        ready_event.set()
     finally:
         loop.close()
 
 
 def run(host: str = "127.0.0.1", port: int = 8899):
     """Start the MCP server (stdio) with embedded Bridge Server."""
-    # Start bridge in background thread
+    ready_event = threading.Event()
+    bind_error: list = []
+
     bridge_thread = threading.Thread(
         target=_run_bridge_server,
-        args=(host, port),
+        args=(host, port, ready_event, bind_error),
         daemon=True,
     )
     bridge_thread.start()
 
-    # If launched manually (TTY), show friendly setup instructions.
-    # If launched by an MCP client (no TTY), just log briefly.
+    # Wait briefly for the bridge to settle so our banner appears *after*
+    # Playwright's "Chromium launched" log and any bind errors.
+    ready_event.wait(timeout=8)
+
     if sys.stdin.isatty():
         url = f"http://{host}:{port}"
-        print(
-            f"\n  Peek is running on {url}\n\n"
-            f"  Next steps:\n"
-            f"    1. Open {url} in your browser\n"
-            f"    2. Drag the blue 'Peek' button to your bookmark bar\n"
-            f"    3. Click the bookmarklet on any localhost page to start capturing\n\n"
-            f"  Press Ctrl+C to stop.\n",
-            file=sys.stderr,
-        )
+        if bind_error:
+            print(f"\n  ⚠ {bind_error[0]}\n", file=sys.stderr)
+            print(
+                f"  MCP tools (screenshot / get_user_selection) still work,\n"
+                f"  but bookmarklet captures need the bridge on {url}.\n\n"
+                f"  Press Ctrl+C to stop.\n",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"\n  Peek bridge running on {url}\n"
+                f"  Open that URL if you need to (re)install the bookmarklet.\n\n"
+                f"  Press Ctrl+C to stop.\n",
+                file=sys.stderr,
+            )
     else:
-        logger.info(f"Bridge server started on {host}:{port}")
+        if bind_error:
+            logger.warning(bind_error[0])
+        else:
+            logger.info(f"Bridge server started on {host}:{port}")
 
-    # Run MCP server on main thread (stdio)
+    # Run MCP server on main thread (stdio). KeyboardInterrupt is the expected
+    # way to stop — swallow it so the user doesn't see a traceback.
     try:
         mcp.run()
+    except KeyboardInterrupt:
+        if sys.stdin.isatty():
+            print("\n  Shutting down Peek...", file=sys.stderr)
     finally:
         # Graceful shutdown of bridge server and browser
         if _bridge_server:
@@ -257,6 +296,8 @@ def run(host: str = "127.0.0.1", port: int = 8899):
             asyncio.get_event_loop().run_until_complete(_shutdown_browser())
         except Exception:
             pass
+        # Give the bridge thread a moment to exit cleanly
+        bridge_thread.join(timeout=2)
 
 
 if __name__ == "__main__":

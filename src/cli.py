@@ -53,22 +53,51 @@ def _detect_claude_code():
     return shutil.which("claude") is not None
 
 
+def _claude_mcp_line_for_peek():
+    """Return the `claude mcp list` line that mentions `peek`, or None.
+
+    Used for state detection — if the line mentions the current peek binary
+    AND ` mcp` as the subcommand, the registration is good."""
+    try:
+        result = subprocess.run(
+            ["claude", "mcp", "list"],
+            capture_output=True, text=True, timeout=10,
+        )
+        for line in (result.stdout or "").splitlines():
+            if "peek" in line:
+                return line
+    except Exception:
+        pass
+    return None
+
+
+def _claude_mcp_registered_correctly():
+    """True iff Claude Code has `peek` registered with current binary + `mcp` subcommand."""
+    peek_path = shutil.which("peek")
+    if not peek_path:
+        return False
+    line = _claude_mcp_line_for_peek()
+    if not line or peek_path not in line:
+        return False
+    # After the binary path, the subcommand should be `mcp`. Older versions
+    # accidentally registered `peek setup`, which is the root cause of the
+    # "bookmarklet page keeps opening after upgrade" bug.
+    rest = line.split(peek_path, 1)[1]
+    return "mcp" in rest.split() or rest.lstrip().startswith("mcp")
+
+
 def _add_claude_mcp():
     """Add peek as a Claude Code MCP server (user scope)."""
     peek_path = shutil.which("peek")
     if not peek_path:
         return False, "peek binary not found in PATH"
     try:
-        # Check if already added with correct path
-        list_result = subprocess.run(
-            ["claude", "mcp", "list"],
-            capture_output=True, text=True, timeout=10,
-        )
-        if "peek" in (list_result.stdout or ""):
-            # Verify the registered path matches current peek binary
-            if peek_path in (list_result.stdout or ""):
-                return True, "already configured"
-            # Path mismatch — re-register with correct path
+        if _claude_mcp_registered_correctly():
+            return True, "already configured"
+
+        # If there's a stale `peek` entry (wrong path, or registered with the
+        # wrong subcommand like `setup`), remove it before re-adding.
+        if _claude_mcp_line_for_peek():
             subprocess.run(
                 ["claude", "mcp", "remove", "-s", "user", "peek"],
                 capture_output=True, text=True, timeout=10,
@@ -86,15 +115,35 @@ def _add_claude_mcp():
 
 
 def _setup():
-    """Run the one-shot setup wizard."""
+    """Run the one-shot setup wizard. Detects already-installed state and
+    short-circuits, so users who run `peek setup` on an upgrade don't get
+    walked through the drag-the-bookmarklet flow again."""
     print()
     print("  Peek setup")
     print("  ──────────")
     print()
 
+    playwright_ok = _check_playwright()
+    claude_ok = _detect_claude_code() and _claude_mcp_registered_correctly()
+
+    # Fast path: everything already in place. Don't open a browser, don't
+    # start the MCP server, don't re-print the drag instructions. Just
+    # confirm state and exit.
+    if playwright_ok and claude_ok:
+        print("  ✓ Already set up")
+        print("    • Playwright Chromium: installed")
+        print("    • Claude Code MCP: registered (mcp subcommand, correct binary path)")
+        print()
+        print("  Nothing to do. Your existing bookmarklet works as-is (from v0.5+).")
+        print("  If you need to (re)grab the bookmarklet, open http://localhost:8899")
+        print("  while Peek is running (`peek mcp` or via Claude Code).")
+        print()
+        return
+
+    # First-time install (or partial install) — run the wizard.
     # Step 1: Playwright
     print("  [1/3] Checking Playwright Chromium...")
-    if _check_playwright():
+    if playwright_ok:
         print("        OK — Chromium installed")
     else:
         print("        Not found — installing...")

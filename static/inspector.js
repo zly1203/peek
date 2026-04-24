@@ -3,7 +3,7 @@
  * Provides region select, element select, and annotation modes.
  * Sends captures to bridge server at localhost:8899.
  */
-const __PEEK_INSPECTOR_VERSION = "0.5.3";
+const __PEEK_INSPECTOR_VERSION = "0.5.4";
 
 (function () {
   if (window.__inspectorActive) {
@@ -493,11 +493,28 @@ const __PEEK_INSPECTOR_VERSION = "0.5.3";
     // The drag handle has its own mousedown listener that calls
     // stopPropagation, so toolbar's bubble-phase listener below is a no-op
     // when the user grabs the handle.
+    //
+    // Capture-phase preventDefault on document: runs before the button takes
+    // focus, so the page's currently-focused element (popover trigger etc.)
+    // does not blur — preserves popovers that dismiss on focus loss. We
+    // intentionally do NOT stopPropagation in capture phase because that
+    // would kill our own button click handlers before they run.
+    const captureGuard = (e) => {
+      if (toolbar && toolbar.contains(e.target)) e.preventDefault();
+    };
+    document.addEventListener("mousedown", captureGuard, true);
+    document.addEventListener("pointerdown", captureGuard, true);
+
     toolbar.addEventListener("mousedown", (e) => {
       e.preventDefault();
       e.stopPropagation();
     });
     toolbar.addEventListener("click", (e) => { e.stopPropagation(); });
+
+    toolbar.__captureBlocker = () => {
+      document.removeEventListener("mousedown", captureGuard, true);
+      document.removeEventListener("pointerdown", captureGuard, true);
+    };
 
     document.body.appendChild(toolbar);
 
@@ -917,20 +934,25 @@ const __PEEK_INSPECTOR_VERSION = "0.5.3";
     overlay.style.pointerEvents = "";
 
     if (!el || el.id?.startsWith(NS) || el.closest(`[id^="${NS}"]`)) {
-      highlightBox.style.display = "none";
       lastHoveredEl = null;
+      if (!pendingCapture) highlightBox.style.display = "none";
       return;
     }
 
     // Skip body/html — selecting the whole page is never useful
     const tag = el.tagName.toLowerCase();
     if (tag === "body" || tag === "html") {
-      highlightBox.style.display = "none";
       lastHoveredEl = null;
+      if (!pendingCapture) highlightBox.style.display = "none";
       return;
     }
 
     lastHoveredEl = el;
+    // Once a selection is committed (user clicked), stop following the mouse.
+    // The highlight stays locked on the chosen element until the user sends
+    // or picks a different element by clicking again.
+    if (pendingCapture) return;
+
     const r = el.getBoundingClientRect();
     highlightBox.style.display = "block";
     highlightBox.style.left = r.left + "px";
@@ -944,6 +966,13 @@ const __PEEK_INSPECTOR_VERSION = "0.5.3";
     const el = lastHoveredEl;
     const r = el.getBoundingClientRect();
 
+    // Lock the highlight box to this element (don't wait for a hover event —
+    // the user may not move the mouse again before hitting Send).
+    highlightBox.style.display = "block";
+    highlightBox.style.left = r.left + "px";
+    highlightBox.style.top = r.top + "px";
+    highlightBox.style.width = r.width + "px";
+    highlightBox.style.height = r.height + "px";
     highlightBox.style.borderColor = "#22c55e";
 
     // Stage capture data, don't send yet
@@ -984,6 +1013,7 @@ const __PEEK_INSPECTOR_VERSION = "0.5.3";
   function destroy() {
     cleanupMode();
     toolbar?.__dragTeardown?.();
+    toolbar?.__captureBlocker?.();
     toolbar?.remove();
     document.removeEventListener("keydown", handleKeydown, true);
     window.__inspectorActive = false;

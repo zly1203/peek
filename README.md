@@ -38,6 +38,8 @@ pkill -f "peek mcp"            # or: quit + reopen Claude Code
 
 Three steps because three layers hold a copy of the code: disk (fixed by `uv tool upgrade`), the running `peek mcp` process (fixed by the kill/restart), and any browser page that already loaded the old `inspector.js` (fixed by a page reload). From v0.5.0 onward, Peek detects a stale `inspector.js` automatically and alerts you to reload — so if you forget step 3, you'll see a prompt the next time you click the bookmarklet.
 
+> Don't run `peek setup` to upgrade. `peek setup` is for first-time installs. From v0.5.4 it detects an existing install and exits cleanly, but earlier versions would re-walk you through the bookmarklet drag flow unnecessarily.
+
 **Upgrading from v0.4 → v0.5.x**: also re-drag the blue button from `http://localhost:8899` to your bookmark bar once. The v0.4 bookmarklet JS had a caching gate that v0.5 removed. Future upgrades within the v0.5 line do not require re-dragging.
 
 ### Other AI tools (Cursor / Windsurf / Claude Desktop)
@@ -191,6 +193,7 @@ The bookmarklet lives in each browser's bookmark bar independently — there's n
 - **Local/LAN only.** Public URLs are blocked for security (SSRF prevention).
 - **`screenshot(url)` is stateless.** It opens a fresh headless browser — no cookies, no login. For your actual session state, use the bookmarklet → `get_user_selection()`.
 - **Bookmarklet capture quality depends on the page.** Most CSS renders faithfully; exotic features (WebGL, cross-origin iframes, playing videos) may render with gaps. Set `PEEK_DOM_SNAPSHOT=0` to fall back to the Playwright re-fetch path if needed.
+- **Peek does not survive a full page navigation.** If you click a link that loads a new URL (not an in-place SPA route change), the bookmarklet-injected script is gone. Click the bookmarklet again on the new page to re-activate Peek. This is a fundamental property of bookmarklets — switching to a browser extension would remove this limitation (not planned).
 - **Captures may contain sensitive data.** Passwords and hidden inputs are redacted, but visible text and screenshots are saved as-is to `~/.peek/captures/`. Peek keeps the 50 most recent captures automatically; older ones are pruned.
 
 ## CLI
