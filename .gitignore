@@ -12,8 +12,13 @@ captures/*.png
 captures/*.json
 !captures/.gitignore
 
-# Internal docs
+# Internal docs & planning
 docs/
+*_PLAN.md
+
+# Local test harnesses
+test-page.html
+test-*.html
 
 # OS
 .DS_Store
