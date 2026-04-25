@@ -10,7 +10,7 @@
   // clicked ✕ and then re-clicked the bookmarklet) would throw
   // "already declared" and the IIFE never runs. Locally scoped means each
   // load gets a fresh binding.
-  const __PEEK_INSPECTOR_VERSION = "0.5.13";
+  const __PEEK_INSPECTOR_VERSION = "0.5.15";
 
   if (window.__inspectorActive) {
     const prev = window.__inspectorVersion || "pre-0.5";
@@ -52,6 +52,7 @@
   let savedScroll = { x: 0, y: 0 }; // saved scroll position for annotate mode
   let annotateLastPos = null;
   let pendingCapture = null; // staged capture data waiting for Send
+  let pendingCaptureTarget = null; // DOM element to render (kept off `pendingCapture` since DOM nodes can't JSON-serialize)
 
   // ─── Utility: CSS selector for element ───
   function getSelector(el) {
@@ -222,6 +223,35 @@
     return clone.outerHTML.slice(0, 2000);
   }
 
+  // ─── Smallest DOM ancestor whose bounding box fully contains a viewport rect.
+  // Used by Region mode to pick a tight render target instead of walking the
+  // entire documentElement. If no ancestor contains the rect (unusual — would
+  // mean the user dragged outside any positioned element), we fall back to
+  // body so the caller still gets a valid target.
+  function smallestContainerOfRect(rect) {
+    const cx = rect.x + rect.width / 2;
+    const cy = rect.y + rect.height / 2;
+    overlay && (overlay.style.pointerEvents = "none");
+    let el = document.elementFromPoint(cx, cy);
+    overlay && (overlay.style.pointerEvents = "");
+    if (!el || isPeekNode(el) || el.closest(`[id^="${NS}"]`)) {
+      return document.body;
+    }
+    while (el && el !== document.body && el !== document.documentElement) {
+      const r = el.getBoundingClientRect();
+      if (
+        r.left <= rect.x &&
+        r.top <= rect.y &&
+        r.right >= rect.x + rect.width &&
+        r.bottom >= rect.y + rect.height
+      ) {
+        return el;
+      }
+      el = el.parentElement;
+    }
+    return document.body;
+  }
+
   // ─── Utility: get elements in a rect ───
   function getElementsInRect(rect) {
     const results = [];
@@ -276,49 +306,163 @@
     return modernScreenshotLoadPromise;
   }
 
-  async function captureFullPagePng() {
-    // Hide Peek's own UI so it doesn't appear in the capture
-    const peekEls = Array.from(document.querySelectorAll(`[id^="${NS}"]`));
-    const originalVisibility = peekEls.map(el => ({ el, visibility: el.style.visibility }));
-    peekEls.forEach(el => { el.style.visibility = "hidden"; });
+  // Skip Peek's own elements during DOM cloning so they never enter the
+  // screenshot — replaces the old visibility:hidden trick (which caused
+  // the pill to flicker on slow captures).
+  function isPeekNode(node) {
+    if (!node || node.nodeType !== 1) return false;
+    if (typeof node.id === "string" && node.id.startsWith(NS)) return true;
+    if (node.classList) {
+      for (const c of node.classList) if (c.startsWith(NS)) return true;
+    }
+    return false;
+  }
 
+  // `target` controls what subtree gets rendered:
+  //   - documentElement → full viewport (annotate mode; user drew on the
+  //     whole page, so we need the whole page as backdrop)
+  //   - any other element → that element's subtree only (Element/Region
+  //     modes; user explicitly picked it, no need to walk unrelated DOM)
+  // Passing a small subtree is the real speedup vs. v0.5.13: modern-screenshot
+  // walks every node it's given and inlines every <img>/font/css resource,
+  // so cutting tree size cuts work proportionally.
+  // Toggle verbose timing in DevTools console:
+  //   localStorage.setItem('__uiinsp_debug', '1')   → on
+  //   localStorage.removeItem('__uiinsp_debug')     → off
+  // Off by default so production users don't see noise.
+  function isDebugOn() {
+    try { return localStorage.getItem(NS + "debug") === "1"; } catch { return false; }
+  }
+
+  // Force lazy-loaded images in the capture target to start fetching now,
+  // so modern-screenshot's "wait until load" phase doesn't sit on them.
+  // Without this, an offscreen `loading="lazy"` <img> never fires `load`
+  // (the browser hasn't fetched it yet), so modern-screenshot times out
+  // at its default 30 s — observed on liying.github.io's hobby icons.
+  // Setting `loading="eager"` triggers an immediate fetch; combined with
+  // the `timeout: 1500` we pass to domToPng, the worst case is bounded
+  // to 1.5 s instead of 30 s, and small icons typically load in <300 ms.
+  //
+  // Returns an array of {img, originalLoading} so the caller can restore
+  // the user's original `loading` attribute after capture — mutating
+  // user pages without restoring is a leaky side effect.
+  function eagerifyLazyImages(target) {
+    const root = target === document.documentElement ? document : target;
+    if (!root.querySelectorAll) return [];
+    const restored = [];
+    for (const img of root.querySelectorAll('img[loading="lazy"]')) {
+      restored.push({ img, originalLoading: img.loading });
+      img.loading = "eager";
+    }
+    return restored;
+  }
+  function restoreLazyImages(restored) {
+    for (const { img, originalLoading } of restored) {
+      // Once an image has finished loading, the loading attribute has no
+      // further effect — but we still set it back so the page DOM looks
+      // exactly like Peek never touched it.
+      img.loading = originalLoading;
+    }
+  }
+
+  async function capturePng(target) {
+    const debug = isDebugOn();
+    const tLabel = `[Peek] capturePng (${target === document.documentElement ? "full-doc" : (target.tagName?.toLowerCase() || "?")}, ${target.querySelectorAll?.("*").length ?? 0} descendants)`;
+    if (debug) console.time(tLabel);
     try {
+      if (debug) console.time("[Peek]   ensureModernScreenshotLoaded");
       await ensureModernScreenshotLoaded();
-      // Let the visibility change paint before rendering
-      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      if (debug) console.timeEnd("[Peek]   ensureModernScreenshotLoaded");
 
-      // Render the viewport only, not the whole document. Passing width/height
-      // sizes the output canvas to the viewport; the root `transform` shifts
-      // the cloned DOM so what was at (scrollX, scrollY) lands at the origin.
-      // Rendering the full document on a tall page produced 5-50 MB PNGs that
-      // exceeded Claude's ~5 MB image limit — and Peek's job is to show what
-      // the user selected, which is always in view.
-      const dataUrl = await window.modernScreenshot.domToPng(document.documentElement, {
+      const lazyState = eagerifyLazyImages(target);
+
+      const isFullDoc = target === document.documentElement;
+      const opts = {
         scale: 1,
-        width: window.innerWidth,
-        height: window.innerHeight,
-        style: {
+        filter: (node) => !isPeekNode(node),
+        // 2 s ceiling on the "wait until load" phase. Default is 30 s;
+        // a single broken or unfetched <img> blocks the whole capture
+        // until the timer fires. 2 s is the Doherty-threshold sweet
+        // spot — short enough that users with the spinner showing don't
+        // feel stuck, long enough to catch large hero images on slower
+        // connections (1.5 s would cut off ~1-3 MB photos that legitimately
+        // would have rendered). After timeout the image is omitted and
+        // rendering continues.
+        timeout: 2000,
+        // When debug is on, modern-screenshot prints its own internal phase
+        // timings (clone node / image to canvas / wait until load) prefixed
+        // with `[modern-screenshot]`. Combined with our own labels below,
+        // this gives a complete picture of where time actually goes — the
+        // first thing to look at when capture feels slow.
+        debug,
+      };
+      if (isFullDoc) {
+        // Same viewport-clip trick as v0.5.13 — output is sized to viewport
+        // and the cloned DOM is translated so the visible area lands at (0,0).
+        opts.width = window.innerWidth;
+        opts.height = window.innerHeight;
+        opts.style = {
           transform: `translate(${-window.scrollX}px, ${-window.scrollY}px)`,
           transformOrigin: "top left",
-        },
-      });
+        };
+      }
+      // For non-full-doc targets, leave width/height unset — modern-screenshot
+      // sizes the output to target.getBoundingClientRect() automatically.
+
+      let dataUrl;
+      try {
+        if (debug) console.time("[Peek]   domToPng");
+        dataUrl = await window.modernScreenshot.domToPng(target, opts);
+        if (debug) console.timeEnd("[Peek]   domToPng");
+      } finally {
+        // Restore lazy loading state whether capture succeeded or threw,
+        // so the user's page DOM is left exactly as Peek found it.
+        restoreLazyImages(lazyState);
+      }
+
       const comma = dataUrl.indexOf(",");
       return comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
     } finally {
-      originalVisibility.forEach(({ el, visibility }) => { el.style.visibility = visibility; });
+      if (debug) console.timeEnd(tLabel);
     }
   }
 
   // ─── Send capture to bridge ───
-  async function sendCapture(data) {
-    // Attach a client-side PNG when possible so the server can skip the
-    // stateless Playwright re-fetch and agents see the user's real state.
-    // Silently fall back if modern-screenshot fails — server handles absence.
+  // `target` is the element to rasterize — Element/Region pass the picked
+  // element / smallest containing ancestor; annotate passes documentElement.
+  // Without a faithful client-side PNG the server falls back to Playwright,
+  // which re-fetches the URL and loses logged-in/JS-modified state — so we
+  // don't silently swallow render errors here, we surface them.
+  //
+  // Button state choreography (see setSendBtnState):
+  //   click → "dim" (instant ack, before any await)
+  //          → at +500ms, if still in flight → "loading" (spinner)
+  //          → on success → "success" ("✓"), caller hides subpanel after
+  //                          SUCCESS_FLASH_MS
+  //          → on any failure → "idle" (back to clickable, hint updated
+  //                              by caller)
+  // The bottom-center "Captured!" toast was removed: focal-point button
+  // confirmation is harder to miss than a far-away toast. Error toasts
+  // stay (red, must-not-miss).
+  async function sendCapture(data, target) {
+    setSendBtnState("dim");
+    let loadingTimer = setTimeout(() => {
+      setSendBtnState("loading");
+      loadingTimer = null;
+    }, LOADING_INDICATOR_DELAY_MS);
+    const cancelLoadingTimer = () => {
+      if (loadingTimer) { clearTimeout(loadingTimer); loadingTimer = null; }
+    };
+
     try {
-      const png = await captureFullPagePng();
+      const png = await capturePng(target || document.documentElement);
       if (png) data.pageScreenshotBase64 = png;
     } catch (e) {
-      console.warn("Peek: client-side PNG failed, server will fall back to Playwright", e);
+      cancelLoadingTimer();
+      setSendBtnState("idle");
+      console.error("[Peek] client-side PNG failed:", e);
+      showToast("Peek: screenshot failed — try again or pick a smaller selection.", true);
+      return;
     }
 
     let resp;
@@ -329,6 +473,8 @@
         body: JSON.stringify(data),
       });
     } catch (e) {
+      cancelLoadingTimer();
+      setSendBtnState("idle");
       // True network-level failure: bridge really isn't reachable.
       showToast(
         "Peek bridge not running — open Claude Code (it starts peek automatically) or run `peek mcp` in a terminal.",
@@ -341,6 +487,8 @@
     // Bridge responded but with an error (413 too-large, 500 server bug, etc.).
     // Don't mis-report as "bridge not running" — show what the server said.
     if (!resp.ok) {
+      cancelLoadingTimer();
+      setSendBtnState("idle");
       let detail = `HTTP ${resp.status}`;
       try {
         const body = await resp.json();
@@ -360,9 +508,12 @@
 
     try {
       const result = await resp.json();
-      showToast("Captured!");
+      cancelLoadingTimer();
+      setSendBtnState("success");
       return result;
     } catch (e) {
+      cancelLoadingTimer();
+      setSendBtnState("idle");
       // 2xx response but body isn't JSON — unusual but possible (proxy etc.).
       showToast("Peek: unexpected response from bridge.", true);
       console.error("[Peek] response parse failed:", e);
@@ -411,7 +562,7 @@
     Object.assign(subtoolbar.style, {
       position: "absolute",
       left: "0",
-      top: "calc(100% + 6px)",
+      top: "calc(100% + 4px)",
       display: "none",
       gap: "8px",
       alignItems: "center",
@@ -444,9 +595,17 @@
     sendBtn.id = NS + "subtoolbar_send";
     sendBtn.textContent = "Send";
     Object.assign(sendBtn.style, {
-      padding: "4px 14px", border: "none", borderRadius: "14px",
-      color: "white", fontSize: "12px", cursor: "pointer",
+      // minWidth/minHeight + border-box together keep the button — and
+      // the subpanel that hugs it — at a constant size in all three
+      // states (Send, Capturing, hidden). The spinner is shorter than
+      // a line of text, so without minHeight the button (and panel)
+      // would shrink ~4px when entering Capturing.
+      boxSizing: "border-box",
+      padding: "4px 14px", minWidth: "56px", minHeight: "24px",
+      border: "none", borderRadius: "14px",
+      color: "white", fontSize: "12px", lineHeight: "16px", cursor: "pointer",
       background: "#22c55e",
+      display: "inline-flex", alignItems: "center", justifyContent: "center",
     });
     sendBtn.addEventListener("click", onSend);
     subtoolbar.appendChild(sendBtn);
@@ -461,6 +620,85 @@
   function updateSubpanelHint(hintText) {
     const hint = document.getElementById(NS + "subtoolbar_hint");
     if (hint) hint.textContent = hintText;
+  }
+
+  // ─── Send button state machine ────────────────────────────────────────
+  // Four states span the full click→capture→done UX:
+  //   "idle"     green "Send", enabled — default, accepts clicks
+  //   "dim"      green "Send", disabled, opacity 0.7 — instant click ack
+  //   "loading"  green ring spinner, disabled — only shown if capture
+  //              still running 500ms after click (delayed-loading pattern)
+  //   "success"  green "✓", enabled-look but disabled — shown briefly
+  //              before the subpanel auto-hides
+  //
+  // Why four and not just two: the typical 400-500ms capture finishes
+  // before "loading" would appear, so without "dim" + "success" the
+  // button would never visually change on fast paths and users would
+  // wonder if their click registered. "dim" gives instant feedback;
+  // "success" gives a clear focal-point confirmation right where the
+  // user is already looking (replaces the easy-to-miss bottom toast).
+  const LOADING_INDICATOR_DELAY_MS = 500;
+  const SUCCESS_FLASH_MS = 600;
+
+  function setSendBtnState(state) {
+    const btn = document.getElementById(NS + "subtoolbar_send");
+    if (!btn) return;
+    // Always start from a clean slate so transitions don't accumulate
+    // stale child nodes (e.g. an old spinner sitting next to "✓").
+    btn.textContent = "";
+    if (state === "idle") {
+      btn.disabled = false;
+      btn.style.opacity = "1";
+      btn.style.cursor = "pointer";
+      btn.textContent = "Send";
+      return;
+    }
+    if (state === "dim") {
+      btn.disabled = true;
+      btn.style.opacity = "0.7";
+      btn.style.cursor = "default";
+      btn.textContent = "Send";
+      return;
+    }
+    if (state === "loading") {
+      btn.disabled = true;
+      btn.style.opacity = "0.92";
+      btn.style.cursor = "default";
+      // CSS ring spinner — rotates a partial-border circle. Cleaner than
+      // a Unicode glyph (which depends on font glyph-box centering and
+      // can wobble) and stays compact: only ~12px wide, fits inside the
+      // pre-reserved Send-button width without changing the layout.
+      const spinner = document.createElement("span");
+      spinner.id = NS + "spinner";
+      Object.assign(spinner.style, {
+        display: "inline-block",
+        width: "12px", height: "12px",
+        border: "2px solid rgba(255,255,255,0.35)",
+        borderTopColor: "white",
+        borderRadius: "50%",
+        animation: NS + "spin 0.7s linear infinite",
+      });
+      btn.appendChild(spinner);
+      ensureSpinnerKeyframes();
+      return;
+    }
+    if (state === "success") {
+      btn.disabled = true;
+      btn.style.opacity = "1";
+      btn.style.cursor = "default";
+      btn.textContent = "✓";
+      return;
+    }
+  }
+
+  let spinnerKeyframesInjected = false;
+  function ensureSpinnerKeyframes() {
+    if (spinnerKeyframesInjected) return;
+    const style = document.createElement("style");
+    style.id = NS + "spinner_kf";
+    style.textContent = `@keyframes ${NS}spin{to{transform:rotate(360deg)}}`;
+    document.head.appendChild(style);
+    spinnerKeyframesInjected = true;
   }
 
   function hideSubpanel() {
@@ -513,18 +751,20 @@
     // Stack below the subpanel when the subpanel is below the pill;
     // above the subpanel when the subpanel flipped above.
     const subVisible = subtoolbar && subtoolbar.style.display !== "none";
+    // 4px gap matches the subpanel's gap to the pill — keeps the entire
+    // pill / subpanel / modeTip stack on one consistent thin-rule rhythm.
     if (subVisible) {
       const subBelow = subtoolbar.style.top !== "auto" && subtoolbar.style.top !== "";
       const subH = subtoolbar.offsetHeight || 32;
       if (subBelow) {
-        modeTip.style.top = `calc(100% + 6px + ${subH}px + 4px)`;
+        modeTip.style.top = `calc(100% + 4px + ${subH}px + 4px)`;
         modeTip.style.bottom = "auto";
       } else {
-        modeTip.style.bottom = `calc(100% + 6px + ${subH}px + 4px)`;
+        modeTip.style.bottom = `calc(100% + 4px + ${subH}px + 4px)`;
         modeTip.style.top = "auto";
       }
     } else {
-      modeTip.style.top = "calc(100% + 6px)";
+      modeTip.style.top = "calc(100% + 4px)";
       modeTip.style.bottom = "auto";
     }
   }
@@ -537,10 +777,10 @@
     const spaceBelow = window.innerHeight - pillRect.bottom;
     if (spaceBelow < subH + 12) {
       subtoolbar.style.top = "auto";
-      subtoolbar.style.bottom = "calc(100% + 6px)";
+      subtoolbar.style.bottom = "calc(100% + 4px)";
     } else {
       subtoolbar.style.bottom = "auto";
-      subtoolbar.style.top = "calc(100% + 6px)";
+      subtoolbar.style.top = "calc(100% + 4px)";
     }
   }
 
@@ -746,18 +986,22 @@
 
   async function sendPendingCapture() {
     if (!pendingCapture) return;
-    const result = await sendCapture(pendingCapture);
+    const result = await sendCapture(pendingCapture, pendingCaptureTarget);
     if (result) {
-      // Success — sendCapture already showed a "Captured!" toast. Clear the
-      // staged capture, reset selection visuals, hide the subpanel. User
-      // can select again or press Esc.
+      // Success — sendCapture put the button into "✓" state. Hold that
+      // confirmation for SUCCESS_FLASH_MS before tearing down the
+      // subpanel so the user has a clear in-focus signal that the
+      // capture went through.
       pendingCapture = null;
+      pendingCaptureTarget = null;
+      await new Promise(r => setTimeout(r, SUCCESS_FLASH_MS));
       if (regionBox) { regionBox.style.display = "none"; regionBox.style.borderColor = "#3b82f6"; }
       if (highlightBox) { highlightBox.style.borderColor = "#3b82f6"; }
       hideSubpanel();
     } else {
       // Failure — leave the staged capture + subpanel so the user can retry
-      // without re-selecting. sendCapture already showed an error toast.
+      // without re-selecting. sendCapture already reset button to "idle"
+      // and showed an error toast.
       updateSubpanelHint("Send failed — try again, or Esc to cancel");
     }
   }
@@ -885,7 +1129,10 @@
     // Annotation canvas (transparent bg with red drawings)
     const annotationBase64 = canvas.toDataURL("image/png").split(",")[1];
 
-    await sendCapture({
+    // Annotate draws over the whole page, so we need full-viewport context
+    // as the backdrop — no smarter target available. This is the one mode
+    // that may take >300ms; the delayed loading indicator covers it.
+    const result = await sendCapture({
       mode: "annotate",
       url: safeUrl(),
       viewport: { width: w, height: window.innerHeight },
@@ -898,7 +1145,14 @@
       },
       elements,
       screenshotBase64: annotationBase64,
-    });
+    }, document.documentElement);
+    if (result) {
+      // Hold ✓ briefly for confirmation, then reset to idle. Unlike
+      // Element/Region we don't hide the subpanel — the user may want
+      // to keep drawing and sending more annotations on the same page.
+      await new Promise(r => setTimeout(r, SUCCESS_FLASH_MS));
+      setSendBtnState("idle");
+    }
   }
 
   // ─── Mode management ───
@@ -945,6 +1199,7 @@
     regionStart = null;
     drawing = false;
     pendingCapture = null;
+    pendingCaptureTarget = null;
     // Restore scrolling when leaving annotate mode
     if (window.__peekPreventScroll) {
       window.removeEventListener("wheel", window.__peekPreventScroll);
@@ -1004,6 +1259,10 @@
       region: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) },
       elements,
     };
+    // Pre-compute the tightest DOM subtree to rasterize when Send is hit.
+    // Doing it here (cheap; just a parent-walk) means click→Send latency
+    // stays small even on huge pages.
+    pendingCaptureTarget = smallestContainerOfRect(rect);
     showSubpanel({
       hintText: `Region: ${elements.length} element${elements.length !== 1 ? "s" : ""} — re-drag to adjust`,
       onSend: sendPendingCapture,
@@ -1080,6 +1339,9 @@
         domContext: getDOMContext(el),
       }],
     };
+    // Render only the picked element's subtree on Send — the dramatic
+    // speed win over rasterizing documentElement.
+    pendingCaptureTarget = el;
     const tag = el.tagName.toLowerCase();
     const id = el.id ? `#${el.id}` : "";
     showSubpanel({
