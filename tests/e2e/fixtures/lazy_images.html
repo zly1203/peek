@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Peek Test — Lazy Images</title>
+<style>
+  body { margin: 0; padding: 20px; font-family: sans-serif; }
+  .top { padding: 20px; }
+  .spacer { height: 1500px; }
+  .icons {
+    display: flex;
+    gap: 20px;
+    padding: 20px;
+    border-top: 1px solid #ccc;
+  }
+  .icons img {
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+    background: #eee;
+  }
+</style>
+</head>
+<body>
+  <header class="top">
+    <h1 id="title">Lazy-image test page</h1>
+    <p id="subtitle">The 4 icons below are <code>loading="lazy"</code> and sit
+       past a 1500-px spacer, so they will NOT be fetched on page load.</p>
+    <button id="action" class="primary btn">Click me</button>
+  </header>
+
+  <div class="spacer">scroll past this to reach the icons</div>
+
+  <!--
+    Each <img> uses loading="lazy" pointing at a tiny inline-data SVG that
+    NEVER fires `load` until the browser decides to fetch it (i.e. when the
+    user scrolls close). Pre-v0.5.14 this would block modern-screenshot's
+    "wait until load" phase for the full 30 s default timeout. v0.5.14
+    flips loading→eager before capture so the browser fetches immediately.
+  -->
+  <section class="icons">
+    <img id="icon-1" loading="lazy" alt="icon 1"
+         src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' fill='%23ff7e5f'/></svg>">
+    <img id="icon-2" loading="lazy" alt="icon 2"
+         src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' fill='%23feb47b'/></svg>">
+    <img id="icon-3" loading="lazy" alt="icon 3"
+         src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' fill='%2386a59c'/></svg>">
+    <img id="icon-4" loading="lazy" alt="icon 4"
+         src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' fill='%235d7b93'/></svg>">
+  </section>
+</body>
+</html>

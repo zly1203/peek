@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Peek Test — JS-Modified DOM</title>
+<style>
+  body { margin: 0; padding: 20px; font-family: sans-serif; }
+  #user-greeting { padding: 16px; background: #e6f4ea; border-radius: 8px; }
+  #user-greeting.hidden { display: none; }
+  #login-form input { padding: 6px; margin: 4px; }
+  .status { font-weight: bold; color: #1a73e8; }
+</style>
+</head>
+<body>
+  <h1>JS-modified DOM test</h1>
+
+  <!--
+    The page initially renders a "logged out" state. After load, JS
+    flips it to a "logged in" state with a personalized greeting and a
+    custom data attribute. A faithful capture must reflect this final,
+    JS-modified state — not the static initial HTML that a server-side
+    Playwright re-fetch (without a session) would see.
+
+    This is the defining test of the "client-side PNG" path: server-side
+    Playwright would request the URL fresh and see only the initial HTML;
+    client-side capture sees the user's actual current DOM.
+  -->
+  <div id="user-greeting" class="hidden">
+    <p>Hello, <span id="username">guest</span>!</p>
+    <p class="status">Status: <span id="status-text">unknown</span></p>
+  </div>
+
+  <form id="login-form">
+    <input type="text" id="user-input" value="">
+    <button type="button" id="login-btn">Log in</button>
+  </form>
+
+  <div id="content-container">
+    <p>Click "Log in" to flip the DOM into a logged-in state. Then
+       capture #user-greeting with Peek — its text and visibility are
+       only set by JS, never present in the initial HTML.</p>
+  </div>
+
+  <script>
+    // Simulate "user is now logged in" — in a real app this would be
+    // gated on a successful auth response. The test triggers this by
+    // calling logIn() directly via Playwright's page.evaluate().
+    window.logIn = function (username) {
+      document.getElementById("username").textContent = username;
+      document.getElementById("status-text").textContent = "logged in";
+      document.getElementById("user-greeting").classList.remove("hidden");
+      document.getElementById("user-greeting").setAttribute("data-session", "active");
+      document.getElementById("login-form").style.display = "none";
+    };
+  </script>
+</body>
+</html>

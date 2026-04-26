@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Peek Test — Web Fonts</title>
+<!--
+  Google Fonts via cross-origin <link>. modern-screenshot can't read
+  these stylesheets via .cssRules (browser blocks cross-origin
+  CSSStyleSheet access) and logs a SecurityError to console — by design.
+  This fixture exists to confirm that warning is HARMLESS and capture
+  still succeeds. The library catches the error internally and proceeds.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Newsreader:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<style>
+  body {
+    margin: 0;
+    padding: 40px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 400;
+    background: #fafaf7;
+    color: #2d2926;
+  }
+  h1 {
+    font-family: 'Newsreader', serif;
+    font-weight: 400;
+    font-style: italic;
+    margin: 0 0 20px;
+  }
+  .card {
+    padding: 24px;
+    background: white;
+    border: 1px solid #eee;
+    border-radius: 12px;
+    max-width: 480px;
+  }
+  .label { font-weight: 600; }
+</style>
+</head>
+<body>
+  <h1 id="hero">Web-font capture test</h1>
+  <div id="card" class="card">
+    <p><span class="label">Heading font:</span> Newsreader (Google Fonts)</p>
+    <p><span class="label">Body font:</span> Inter (Google Fonts)</p>
+    <p>Capture this card with Element/Region — the SecurityError warning
+       on the console is expected and benign; the screenshot should still
+       complete in well under 2 seconds.</p>
+  </div>
+</body>
+</html>
