@@ -12,6 +12,21 @@ AI coding agents can edit code, but they can't see your page. You end up describ
 
 Peek fixes this. Your AI agent can screenshot any local page on its own. You can also point at specific elements with a bookmarklet, and the agent gets the screenshot plus element data (selectors, styles, bounding boxes).
 
+## Contents
+
+- [Quick Start](#quick-start)
+  - [Claude Code (CLI or VS Code) — recommended](#claude-code-cli-or-vs-code--recommended)
+  - [Upgrading](#upgrading)
+  - [Other MCP clients (experimental)](#other-mcp-clients-experimental)
+  - [Tell your agent your dev port](#recommended-tell-your-agent-your-dev-port)
+  - [Use it](#use-it)
+- [Supported URLs](#supported-urls)
+- [MCP Tools](#mcp-tools)
+- [How It Works](#how-it-works)
+- [Troubleshooting](#troubleshooting)
+- [Limitations](#limitations)
+- [CLI](#cli)
+
 ## Quick Start
 
 ### Claude Code (CLI or VS Code) — recommended
@@ -80,15 +95,16 @@ Replace `3000` with your actual port. **This prevents your agent from guessing t
 
 ### Use it
 
-**Agent-driven screenshots (no bookmarklet needed):**
+Peek gives the agent two ways to see your UI: **(1)** capture exactly what you point at in your real browser (the main path), or **(2)** have the agent take a fresh headless screenshot itself. Most workflows mix them — point at something with path 1, ask for a fix, then verify with path 2.
 
-Just ask your agent — "screenshot the page", "take a look at localhost:3000", "check if the button looks right". The agent calls `screenshot(url)` directly.
+> **Tip — to guarantee Peek gets invoked**, prefix your request with *"use the Peek MCP tool to ..."*. The agent's auto-tool-selection is usually reliable, but the explicit form removes any ambiguity, especially right after install when you're not sure Peek is wired up correctly.
 
-**User-pointed captures (bookmarklet):**
+**1) User-pointed captures — the main path**
 
-1. One-time: drag the blue button from `~/.peek/bookmarklet.html` (or any other browser's copy of it) to your bookmark bar
-2. Start your AI tool (Claude Code / Cursor / etc.) — it launches peek in the background
-3. Open your app, click the bookmarklet, pick a mode:
+Peek's signature feature: you point at a piece of UI in your real browser, the agent sees exactly what you pointed at along with selector / styles / DOM context. This is what no other tool gives you — the screenshot path (path 2) is just a useful sidecar.
+
+1. One-time: drag the blue button from `~/.peek/bookmarklet.html` to your bookmark bar
+2. Open your app, click the bookmarklet, pick a mode:
 
 | Mode | Shortcut | You do | Agent gets |
 |------|----------|--------|------------|
@@ -96,7 +112,23 @@ Just ask your agent — "screenshot the page", "take a look at localhost:3000", 
 | **Element** | `Alt+S` | Click an element | Screenshot + selector, styles, HTML |
 | **Annotate** | `Alt+A` | Draw freehand | Screenshot + your drawings + elements |
 
-4. Tell your agent: "check what I just selected" — it calls `get_user_selection()`
+3. Tell your agent. Try these:
+
+- *"Use the Peek MCP tool to check the area I just selected — this card overlaps the sidebar on hover."*
+- *"Look at what I sent through Peek and make the spacing match the cards above."*
+- *"I annotated the layout issues with Peek. Fix them, then take a screenshot with Peek to verify your changes."*
+
+The agent calls `get_user_selection()` and receives your capture (PNG + element metadata) as its source of truth.
+
+**2) Agent-driven screenshots — no bookmarklet needed**
+
+For pages that don't need state (a fresh route, a public-ish page, a verification pass after a fix), the agent can grab a headless screenshot itself:
+
+- *"Use the Peek MCP tool to screenshot http://localhost:3000 and tell me if the layout looks right."*
+- *"I just renamed the header — use Peek to take a screenshot and confirm it updated."*
+- *"After your fix, use Peek to screenshot localhost:3000/checkout and verify the button renders correctly."*
+
+This path is stateless: a fresh headless browser opens, renders the URL, closes. Logged-in views, uploaded data, hovered states are NOT visible this way — for those, use path 1.
 
 ## Supported URLs
 
