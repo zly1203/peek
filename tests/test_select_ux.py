@@ -94,20 +94,25 @@ async def test_video_element_selectable(page):
 # ─── Z-index / overlay behavior ───
 
 @pytest.mark.asyncio
-async def test_send_bar_above_overlay(page):
-    """The send bar must have higher z-index than overlay so clicks reach it."""
+async def test_subpanel_clickable_above_overlay(page):
+    """The subpanel (which holds Send) must remain clickable while the
+    select-mode overlay is up. Was previously test_send_bar_above_overlay,
+    comparing the removed `__uiinsp_sendbar` to the overlay. Since v0.5.13
+    the Send button lives inside the pill's subpanel and the equivalent
+    invariant is "toolbar's z-index > overlay's z-index" — the subpanel
+    is positioned `absolute` under the toolbar so it inherits stacking."""
     await _setup_select_mode(page, "<button id='b'>x</button>")
     z = await page.evaluate("""() => {
         const NS = '__uiinsp_';
-        const sendbar = document.getElementById(NS + 'sendbar');
+        const toolbar = document.getElementById(NS + 'toolbar');
         const overlay = document.getElementById(NS + 'overlay');
         return {
-            sendbar: sendbar ? parseInt(sendbar.style.zIndex) : null,
+            toolbar: toolbar ? parseInt(toolbar.style.zIndex) : null,
             overlay: overlay ? parseInt(overlay.style.zIndex) : null,
         };
     }""")
-    assert z["sendbar"] is not None and z["overlay"] is not None
-    assert z["sendbar"] > z["overlay"]
+    assert z["toolbar"] is not None and z["overlay"] is not None
+    assert z["toolbar"] > z["overlay"]
 
 
 @pytest.mark.asyncio

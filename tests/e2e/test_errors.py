@@ -131,17 +131,22 @@ async def test_screenshot_rejects_external_url(bridge_server):
 
 
 @pytest.mark.asyncio
-async def test_screenshot_rejects_file_scheme(bridge_server):
-    """GET /api/screenshot?url=file:///etc/passwd -> 500."""
+async def test_screenshot_accepts_file_scheme(bridge_server):
+    """file:// was added as a permitted scheme in v0.5.13 to match the
+    bookmarklet's local-HTML support. We pass a bogus path so Playwright
+    will fail to load it, but the failure must come from rendering — NOT
+    from validate_url's scheme rejection (which used to 500 on file://)."""
     base_url, _ = bridge_server
 
     async with httpx.AsyncClient() as client:
         resp = await client.get(
             f"{base_url}/api/screenshot",
-            params={"url": "file:///etc/passwd"},
+            params={"url": "file:///nonexistent-peek-test/page.html"},
             timeout=30,
         )
-        assert resp.status_code == 500
+        # The endpoint may still 500 due to Playwright failing to load a
+        # nonexistent file, but the message must not be the scheme rejection.
+        assert "unsupported url scheme" not in resp.text.lower()
 
 
 @pytest.mark.asyncio
@@ -338,13 +343,20 @@ async def test_mcp_get_latest_no_captures(bridge_server):
 
 @pytest.mark.asyncio
 async def test_mcp_screenshot_external_url(bridge_server):
-    """screenshot(url='http://evil.com') -> error TextContent."""
+    """screenshot(url='http://evil.com') -> rejection TextContent.
+
+    v0.5.13 rewrote the rejection message — the new wording lists the
+    permitted schemes/hosts ('file://, localhost, 127.0.0.1, private IPs,
+    .local/.test') and ends 'blocked for safety'. We just check the
+    response carries the safety phrase, not the older 'failed/error'
+    keywords."""
     from src.mcp_server import screenshot
 
     result = await screenshot(url="http://evil.com")
     assert len(result) == 1
     assert result[0].type == "text"
-    assert "failed" in result[0].text.lower() or "error" in result[0].text.lower()
+    text_lower = result[0].text.lower()
+    assert "blocked" in text_lower or "only supports" in text_lower
 
 
 @pytest.mark.asyncio

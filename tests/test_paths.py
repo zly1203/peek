@@ -119,18 +119,19 @@ def test_mcp_tools_registered():
 
 
 def test_screenshot_url_validation():
-    """validate_url must reject non-localhost URLs."""
+    """validate_url accepts localhost + file://, rejects external + non-
+    http(s)/file schemes. file:// was added as a permitted scheme in
+    v0.5.13 (see test_validate_url_allows_file_scheme in test_screenshot.py)."""
     from src.screenshot import validate_url
 
     # Should pass
     validate_url("http://localhost:3000")
     validate_url("http://127.0.0.1:8080")
+    validate_url("file:///Users/me/page.html")
 
     # Should reject
     with pytest.raises(ValueError, match="localhost"):
         validate_url("http://google.com")
-    with pytest.raises(ValueError, match="scheme"):
-        validate_url("file:///etc/passwd")
     with pytest.raises(ValueError, match="scheme"):
         validate_url("javascript:alert(1)")
 

@@ -168,10 +168,14 @@ def test_validate_url_allows_lan():
     assert validate_url("http://myserver:3000") == "http://myserver:3000"  # simple hostname
 
 
-def test_validate_url_rejects_file_scheme():
-    """Rejects file:// URLs."""
-    with pytest.raises(ValueError, match="Unsupported URL scheme"):
-        validate_url("file:///etc/passwd")
+def test_validate_url_allows_file_scheme():
+    """Accepts file:// URLs (added in v0.5.13 — bookmarklet on local HTML
+    files is a first-class Peek use, and the screenshot tool should be
+    consistent with that. validate_url early-returns for file:, skipping
+    hostname/userinfo checks that don't apply to local URLs)."""
+    # Should not raise.
+    validate_url("file:///etc/passwd")
+    validate_url("file:///Users/me/page.html")
 
 
 def test_validate_url_rejects_javascript():
