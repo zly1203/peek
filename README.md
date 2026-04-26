@@ -3,7 +3,7 @@
 Point at your UI. Your AI agent sees it.
 
 <p align="center">
-  <img src="peek-demo.gif" alt="Peek demo — point at a UI element, agent sees it" width="720">
+  <img src="peek-demo.gif" alt="Peek demo: point at a UI element, agent sees it" width="720">
 </p>
 
 ## Why
@@ -15,7 +15,7 @@ Peek fixes this. Your AI agent can screenshot any local page on its own. You can
 ## Contents
 
 - [Quick Start](#quick-start)
-  - [Claude Code (CLI or VS Code) — recommended](#claude-code-cli-or-vs-code--recommended)
+  - [Claude Code (CLI or VS Code)](#claude-code-cli-or-vs-code)
   - [Upgrading](#upgrading)
   - [Other MCP clients (experimental)](#other-mcp-clients-experimental)
   - [Tell your agent your dev port](#recommended-tell-your-agent-your-dev-port)
@@ -29,7 +29,7 @@ Peek fixes this. Your AI agent can screenshot any local page on its own. You can
 
 ## Quick Start
 
-### Claude Code (CLI or VS Code) — recommended
+### Claude Code (CLI or VS Code)
 
 ```bash
 # 1. Install uv (one-time, manages Python for you)
@@ -43,7 +43,7 @@ uv tool install peek-mcp
 peek setup
 ```
 
-`peek setup` is one-shot: installs Playwright Chromium, registers Peek as an MCP server in Claude Code (user scope, all projects), drops the bookmarklet page at `~/.peek/bookmarklet.html` and opens it in your browser. Drag the blue button to your bookmark bar and you're done — the command exits on its own. Nothing to keep running.
+`peek setup` is one-shot: installs Playwright Chromium, registers Peek as an MCP server in Claude Code (user scope, all projects), drops the bookmarklet page at `~/.peek/bookmarklet.html` and opens it in your browser. Drag the blue button to your bookmark bar and you're done; the command exits on its own. Nothing to keep running.
 
 From then on: **open Claude Code and use it normally.** It auto-launches Peek in the background whenever the agent uses a Peek tool.
 
@@ -79,7 +79,7 @@ Add to your MCP config file (e.g. `.cursor/mcp.json`, `~/.codeium/windsurf/mcp_c
 }
 ```
 
-Run `which peek` in your terminal to get the absolute path. Drag the bookmarklet from `~/.peek/bookmarklet.html` (`peek setup` creates it) — no server needed.
+Run `which peek` in your terminal to get the absolute path. Drag the bookmarklet from `~/.peek/bookmarklet.html` (`peek setup` creates it). No server needed.
 
 ### Recommended: tell your agent your dev port
 
@@ -95,13 +95,11 @@ Replace `3000` with your actual port. **This prevents your agent from guessing t
 
 ### Use it
 
-Peek gives the agent two ways to see your UI: **(1)** capture exactly what you point at in your real browser (the main path), or **(2)** have the agent take a fresh headless screenshot itself. Most workflows mix them — point at something with path 1, ask for a fix, then verify with path 2.
+Two paths: point at something in your real browser (the main one), or have the agent take a headless screenshot (handy for verifying its own fix). Mix as needed.
 
-> **Tip — to guarantee Peek gets invoked**, prefix your request with *"use the Peek MCP tool to ..."*. The agent's auto-tool-selection is usually reliable, but the explicit form removes any ambiguity, especially right after install when you're not sure Peek is wired up correctly.
+> **Tip:** to guarantee Peek gets invoked, prefix your request with *"use the Peek MCP tool to ..."*. The agent's auto-tool-selection is usually reliable, but the explicit form removes any ambiguity, especially right after install when you're not sure Peek is wired up correctly.
 
-**1) User-pointed captures — the main path**
-
-Peek's signature feature: you point at a piece of UI in your real browser, the agent sees exactly what you pointed at along with selector / styles / DOM context. No other tool gives you this.
+**1) User-pointed captures**
 
 1. One-time: drag the blue button from `~/.peek/bookmarklet.html` to your bookmark bar
 2. Open your app, click the bookmarklet, pick a mode:
@@ -112,9 +110,9 @@ Peek's signature feature: you point at a piece of UI in your real browser, the a
 | **Element** | `Alt+S` | Click an element | Screenshot + selector, styles, HTML |
 | **Annotate** | `Alt+A` | Draw freehand | Screenshot + your drawings + elements |
 
-3. Tell your agent. **Copy-paste-ready first prompt** — covers everything an agent needs (which app, that you used Peek, what's wrong):
+3. Tell your agent. A **copy-paste-ready first prompt** covers everything the agent needs (which app, that you used Peek, what's wrong):
 
-> *"I'm working on http://localhost:3000. Use the Peek MCP tool to check the UI element I just selected — this card overlaps the sidebar on hover."*
+> *"I'm working on http://localhost:3000. Use the Peek MCP tool to check the UI element I just selected. This card overlaps the sidebar on hover."*
 
 Once the agent knows your port (or you've added it to your `CLAUDE.md`), you can drop the prefix:
 
@@ -123,15 +121,15 @@ Once the agent knows your port (or you've added it to your `CLAUDE.md`), you can
 
 The agent calls `get_user_selection()` and receives your capture (PNG + element metadata) as its source of truth.
 
-**2) Agent-driven screenshots — for verification / quick self-check**
+**2) Agent-driven screenshots (verification or self-check)**
 
 After path 1 sends an issue, you usually want the agent to **verify its fix**. Or sometimes you just want a headless render of a public-ish route without leaving your editor. That's what `screenshot(url)` is for:
 
 - *"Use the Peek MCP tool to screenshot http://localhost:3000/checkout and verify the button renders correctly now."* ← typical post-fix loop
 - *"Take a Peek screenshot of localhost:3000 and tell me if the layout looks right on a fresh load."* ← pre-fix sanity check
-- *"I just renamed the header — use Peek to screenshot the page and confirm it updated."* ← quick visual diff
+- *"I just renamed the header. Use Peek to screenshot the page and confirm it updated."* ← quick visual diff
 
-This path is stateless: a fresh headless browser opens, renders the URL, closes. Logged-in views, uploaded data, hovered states are NOT visible this way — for those, use path 1. (This is also why path 1 is the main path: it captures *your* real browser state, not a clean stranger's.)
+This path is stateless: a fresh headless browser opens, renders the URL, closes. Logged-in views, uploaded data, hovered states are NOT visible this way; for those, use path 1. (This is also why path 1 is the main one: it captures *your* real browser state, not a clean stranger's.)
 
 ## Supported URLs
 
@@ -151,8 +149,8 @@ Peek works with local and LAN addresses:
 
 | Tool | When to use |
 |------|-------------|
-| `screenshot(url)` | **Default** — agent fetches any local/LAN URL in a fresh headless browser. Use for general "look at the page" requests, verifying code changes, etc. |
-| `get_user_selection()` | Reads what *you* captured with the bookmarklet — a region, element, or annotation. Use when you want the agent to see exactly what you pointed at, including any state that requires your interaction (login, uploaded data, clicked buttons). |
+| `screenshot(url)` | **Default**. Agent fetches any local/LAN URL in a fresh headless browser. Use for general "look at the page" requests, verifying code changes, etc. |
+| `get_user_selection()` | Reads what *you* captured with the bookmarklet: a region, element, or annotation. Use when you want the agent to see exactly what you pointed at, including any state that requires your interaction (login, uploaded data, clicked buttons). |
 
 For `Element` mode captures, the agent gets structural context to find the right code:
 
@@ -161,7 +159,7 @@ For `Element` mode captures, the agent gets structural context to find the right
 - **nearest heading** (`h2: Settings`)
 - **parent layout** (`flex, row`)
 
-This means when you point at a button, the agent knows *which* button on which section — no guessing.
+This means when you point at a button, the agent knows *which* button on which section. No guessing.
 
 ## How It Works
 
@@ -178,7 +176,7 @@ You point at something with the bookmarklet
     -> "The chart legend overlaps the bars. Fixing the CSS..."
 ```
 
-Client-side rendering uses [modern-screenshot](https://github.com/qq15725/modern-screenshot) (MIT, vendored). If it fails on an exotic page, you'll see a red error toast — click Send again or pick a smaller selection. (Earlier versions silently fell back to a fresh Playwright fetch on render error, but that loses your logged-in/JS-modified state, which is the whole point of the client-side path.) To globally force the Playwright path anyway, set `PEEK_DOM_SNAPSHOT=0`.
+Client-side rendering uses [modern-screenshot](https://github.com/qq15725/modern-screenshot) (MIT, vendored). If it fails on an exotic page, you'll see a red error toast; click Send again or pick a smaller selection. (Earlier versions silently fell back to a fresh Playwright fetch on render error, but that loses your logged-in/JS-modified state, which is the whole point of the client-side path.) To globally force the Playwright path anyway, set `PEEK_DOM_SNAPSHOT=0`.
 
 ## Troubleshooting
 
@@ -204,15 +202,15 @@ Your scripts directory isn't in PATH. For uv: run `uv tool update-shell` and ope
 
 **`No matching distribution found for peek-mcp`**
 
-Your Python is older than 3.10 (common on macOS system Python). Switch to `uv tool install peek-mcp` — uv downloads a compatible Python for you.
+Your Python is older than 3.10 (common on macOS system Python). Switch to `uv tool install peek-mcp`; uv downloads a compatible Python for you.
 
 **Using Peek from Safari, Firefox, or a different Chrome profile**
 
-Open `~/.peek/bookmarklet.html` in that browser and drag the blue button to its bookmark bar — one-time setup per browser. The `screenshot` tool itself is browser-agnostic (headless Chromium), so it works regardless of your dev browser.
+Open `~/.peek/bookmarklet.html` in that browser and drag the blue button to its bookmark bar (one-time setup per browser). The `screenshot` tool itself is browser-agnostic (headless Chromium), so it works regardless of your dev browser.
 
 **Screenshot shows a blank or default page instead of what I see**
 
-`screenshot(url)` runs a fresh headless browser — no cookies, no login, no interaction state. For pages behind login / upload / button clicks, use the bookmarklet → `get_user_selection()` instead; it captures your real browser view. If that too looks wrong on an unusual page, try `PEEK_DOM_SNAPSHOT=0` to fall back to Playwright.
+`screenshot(url)` runs a fresh headless browser, with no cookies, no login, no interaction state. For pages behind login / upload / button clicks, use the bookmarklet → `get_user_selection()` instead; it captures your real browser view. If that too looks wrong on an unusual page, try `PEEK_DOM_SNAPSHOT=0` to fall back to Playwright.
 
 **Agent returns a stale screenshot**
 
@@ -222,7 +220,7 @@ Open `~/.peek/bookmarklet.html` in that browser and drag the blue button to its 
 
 - **Local/LAN only.** Public URLs are blocked (SSRF prevention).
 - **Bookmarklet render quality varies.** WebGL, cross-origin iframes, and playing videos may not capture faithfully; set `PEEK_DOM_SNAPSHOT=0` to fall back to Playwright.
-- **Peek doesn't survive full-page navigation.** Click a link to a new URL and the bookmarklet script is gone — click the bookmarklet again on the new page. Bookmarklet architecture constraint.
+- **Peek doesn't survive full-page navigation.** Click a link to a new URL and the bookmarklet script is gone. Click the bookmarklet again on the new page. Bookmarklet architecture constraint.
 - **Captures may contain sensitive data.** Passwords and hidden inputs are redacted, but visible text + screenshots live at `~/.peek/captures/` (last 50 kept, older pruned).
 
 ## CLI
@@ -230,15 +228,14 @@ Open `~/.peek/bookmarklet.html` in that browser and drag the blue button to its 
 ```bash
 peek                      # status + next step (most users just need this)
 peek setup                # one-shot: install, register MCP, drop bookmarklet page
-peek mcp                  # advanced — your MCP client auto-launches this
-peek mcp --port 9000      # advanced — different bridge port
+peek mcp                  # advanced; your MCP client auto-launches this
+peek mcp --port 9000      # advanced; different bridge port
 ```
 
 ### When do I need to run `peek mcp` manually?
 
-Almost never — Claude Code auto-launches `peek mcp` whenever an agent uses a Peek tool (registered by `peek setup`).
+Almost never. Claude Code auto-launches `peek mcp` whenever an agent uses a Peek tool (registered by `peek setup`).
 
-If you've configured Peek for another MCP client (see "Other MCP clients" above), that client should launch it the same way per the standard MCP spec — but that path isn't actively tested.
+If you've configured Peek for another MCP client (see "Other MCP clients" above), that client should launch it the same way per the standard MCP spec, but that path isn't actively tested.
 
-The one case you'd run `peek mcp` by hand: **testing the bookmarklet without any MCP client in the loop** — e.g. drawing on a page just to see what data Peek sends. Keep the terminal open while you test; Ctrl+C to stop.
-
+The one case you'd run `peek mcp` by hand: **testing the bookmarklet without any MCP client in the loop**. E.g. drawing on a page just to see what data Peek sends. Keep the terminal open while you test; Ctrl+C to stop.
