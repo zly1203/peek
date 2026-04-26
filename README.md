@@ -2,6 +2,10 @@
 
 Point at your UI. Your AI agent sees it.
 
+<p align="center">
+  <img src="peek-demo.gif" alt="Peek demo — point at a UI element, agent sees it" width="720">
+</p>
+
 ## Why
 
 AI coding agents can edit code, but they can't see your page. You end up describing layouts in words, copy-pasting HTML, or dragging screenshots into chat.
@@ -38,7 +42,9 @@ uv tool upgrade peek-mcp
 
 That's it. The next time Claude Code launches `peek mcp` it'll pick up the new version. Open browser tabs with an old `inspector.js` auto-take-over on the next bookmarklet click.
 
-### Other AI tools (Cursor / Windsurf / Claude Desktop)
+### Other MCP clients (experimental)
+
+> **Heads-up:** Peek is currently developed and tested against Claude Code. It implements the standard MCP protocol so it *should* work with Cursor / Windsurf / Claude Desktop / any MCP-compatible client, but those paths are not actively battle-tested. Issue reports welcome.
 
 ```bash
 uv tool install peek-mcp
@@ -88,7 +94,7 @@ Just ask your agent — "screenshot the page", "take a look at localhost:3000", 
 |------|----------|--------|------------|
 | **Region** | `Alt+R` | Drag a rectangle | Screenshot + elements in that area |
 | **Element** | `Alt+S` | Click an element | Screenshot + selector, styles, HTML |
-| **Annotate** | `Alt+A` | Draw (pen, rect) | Screenshot + your drawings + elements |
+| **Annotate** | `Alt+A` | Draw freehand | Screenshot + your drawings + elements |
 
 4. Tell your agent: "check what I just selected" — it calls `get_user_selection()`
 
@@ -137,7 +143,7 @@ You point at something with the bookmarklet
     -> "The chart legend overlaps the bars. Fixing the CSS..."
 ```
 
-Client-side rendering uses [modern-screenshot](https://github.com/qq15725/modern-screenshot) (MIT, vendored). If it fails on an exotic page, the bridge falls back to Playwright automatically — or set `PEEK_DOM_SNAPSHOT=0` to force it globally.
+Client-side rendering uses [modern-screenshot](https://github.com/qq15725/modern-screenshot) (MIT, vendored). If it fails on an exotic page, you'll see a red error toast — click Send again or pick a smaller selection. (Earlier versions silently fell back to a fresh Playwright fetch on render error, but that loses your logged-in/JS-modified state, which is the whole point of the client-side path.) To globally force the Playwright path anyway, set `PEEK_DOM_SNAPSHOT=0`.
 
 ## Troubleshooting
 
@@ -195,10 +201,9 @@ peek mcp --port 9000      # advanced — different bridge port
 
 ### When do I need to run `peek mcp` manually?
 
-Almost never. Your MCP client launches it for you:
+Almost never — Claude Code auto-launches `peek mcp` whenever an agent uses a Peek tool (registered by `peek setup`).
 
-- **Claude Code** — auto-launches `peek mcp` when an agent uses a Peek tool (registered by `peek setup`).
-- **Cursor / Windsurf / Claude Desktop** — launch it via their MCP config (point `command` at the `peek` binary with `["mcp"]` args; see each client's MCP docs).
+If you've configured Peek for another MCP client (see "Other MCP clients" above), that client should launch it the same way per the standard MCP spec — but that path isn't actively tested.
 
-The one case you'd run `peek mcp` by hand: **testing the bookmarklet without any MCP client** — e.g. drawing on a page just to see what data Peek sends, with no agent in the loop. Keep the terminal open while you test; Ctrl+C to stop.
+The one case you'd run `peek mcp` by hand: **testing the bookmarklet without any MCP client in the loop** — e.g. drawing on a page just to see what data Peek sends. Keep the terminal open while you test; Ctrl+C to stop.
 
