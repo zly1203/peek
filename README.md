@@ -101,7 +101,7 @@ Peek gives the agent two ways to see your UI: **(1)** capture exactly what you p
 
 **1) User-pointed captures — the main path**
 
-Peek's signature feature: you point at a piece of UI in your real browser, the agent sees exactly what you pointed at along with selector / styles / DOM context. This is what no other tool gives you — the screenshot path (path 2) is just a useful sidecar.
+Peek's signature feature: you point at a piece of UI in your real browser, the agent sees exactly what you pointed at along with selector / styles / DOM context. No other tool gives you this.
 
 1. One-time: drag the blue button from `~/.peek/bookmarklet.html` to your bookmark bar
 2. Open your app, click the bookmarklet, pick a mode:
@@ -112,23 +112,26 @@ Peek's signature feature: you point at a piece of UI in your real browser, the a
 | **Element** | `Alt+S` | Click an element | Screenshot + selector, styles, HTML |
 | **Annotate** | `Alt+A` | Draw freehand | Screenshot + your drawings + elements |
 
-3. Tell your agent. Try these:
+3. Tell your agent. **Copy-paste-ready first prompt** — covers everything an agent needs (which app, that you used Peek, what's wrong):
 
-- *"Use the Peek MCP tool to check the area I just selected — this card overlaps the sidebar on hover."*
-- *"Look at what I sent through Peek and make the spacing match the cards above."*
-- *"I annotated the layout issues with Peek. Fix them, then take a screenshot with Peek to verify your changes."*
+> *"I'm working on http://localhost:3000. Use the Peek MCP tool to check the UI element I just selected — this card overlaps the sidebar on hover."*
+
+Once the agent knows your port (or you've added it to your `CLAUDE.md`), you can drop the prefix:
+
+- *"Use the Peek MCP tool to look at what I selected and make the spacing match the cards above."*
+- *"I annotated the layout issues with Peek. Fix them."*
 
 The agent calls `get_user_selection()` and receives your capture (PNG + element metadata) as its source of truth.
 
-**2) Agent-driven screenshots — no bookmarklet needed**
+**2) Agent-driven screenshots — for verification / quick self-check**
 
-For pages that don't need state (a fresh route, a public-ish page, a verification pass after a fix), the agent can grab a headless screenshot itself:
+After path 1 sends an issue, you usually want the agent to **verify its fix**. Or sometimes you just want a headless render of a public-ish route without leaving your editor. That's what `screenshot(url)` is for:
 
-- *"Use the Peek MCP tool to screenshot http://localhost:3000 and tell me if the layout looks right."*
-- *"I just renamed the header — use Peek to take a screenshot and confirm it updated."*
-- *"After your fix, use Peek to screenshot localhost:3000/checkout and verify the button renders correctly."*
+- *"Use the Peek MCP tool to screenshot http://localhost:3000/checkout and verify the button renders correctly now."* ← typical post-fix loop
+- *"Take a Peek screenshot of localhost:3000 and tell me if the layout looks right on a fresh load."* ← pre-fix sanity check
+- *"I just renamed the header — use Peek to screenshot the page and confirm it updated."* ← quick visual diff
 
-This path is stateless: a fresh headless browser opens, renders the URL, closes. Logged-in views, uploaded data, hovered states are NOT visible this way — for those, use path 1.
+This path is stateless: a fresh headless browser opens, renders the URL, closes. Logged-in views, uploaded data, hovered states are NOT visible this way — for those, use path 1. (This is also why path 1 is the main path: it captures *your* real browser state, not a clean stranger's.)
 
 ## Supported URLs
 
