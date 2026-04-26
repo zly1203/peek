@@ -37,11 +37,12 @@ async def _inject_and_wait(page, port):
 
 
 async def _click_send(page):
-    """See test_bookmarklet._click_send for rationale on dispatch_event."""
-    await page.wait_for_selector(
+    """Real Playwright click — also regression-tests v0.5.16's horizontal
+    subpanel-overflow flip (see test_bookmarklet._click_send for rationale)."""
+    send_btn = await page.wait_for_selector(
         "#__uiinsp_subtoolbar_send", state="visible", timeout=3000
     )
-    await page.dispatch_event("#__uiinsp_subtoolbar_send", "click")
+    await send_btn.click()
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -401,3 +402,125 @@ async def test_lazy_loading_attribute_restored(
         f"loading='lazy' attributes not restored after capture: {post_loading}. "
         f"v0.5.14's restoreLazyImages may have regressed."
     )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 7. Subpanel flips horizontal anchor when overflowing the viewport
+# ─────────────────────────────────────────────────────────────────────
+
+
+async def test_subpanel_flips_anchor_on_horizontal_overflow(
+    pw_page, test_page_server, bridge_server, bridge_port
+):
+    """v0.5.16: subpanel auto-flips to right-anchor when it would extend
+    past the viewport's right edge.
+
+    Default state: toolbar at top-right (right:16). Element mode with the
+    `#red-box` div produces the longest hint in test_page.html (e.g.
+    "Element: <div#red-box> — click another to change"). With the default
+    left:0 anchor, the subpanel's right edge would be tens of pixels past
+    the viewport. v0.5.16 detects this in positionSubpanel and switches
+    to right:0 / left:auto so the panel grows leftward from the toolbar's
+    right edge instead.
+
+    This test was the visible motivator for v0.5.16: pre-fix, the Send
+    button could be partially or fully off-screen; users had to
+    drag-the-toolbar-left as a manual workaround. The horizontal flip
+    must:
+      1. Flip the subpanel itself
+      2. Flip the modeTip too (otherwise they visually disconnect into
+         two separate columns)
+      3. Stay flipped while in this state — must not flicker
+    """
+    await pw_page.goto(test_page_server)
+    await _inject_and_wait(pw_page, bridge_port)
+
+    await pw_page.keyboard.press("Alt+s")  # Element mode
+    await asyncio.sleep(0.3)
+
+    # Click #red-box — the longest-hint element in this fixture.
+    el = await pw_page.query_selector("#red-box")
+    box = await el.bounding_box()
+    cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    await pw_page.mouse.move(cx, cy)
+    await asyncio.sleep(0.3)
+    await pw_page.mouse.click(cx, cy)
+
+    # Subpanel should now be visible and right-anchored. Sample the
+    # inline styles plus the actual rendered geometry.
+    state = await pw_page.evaluate("""() => {
+        const sub = document.getElementById('__uiinsp_subtoolbar');
+        const tip = document.getElementById('__uiinsp_mode_tip');
+        if (!sub || !tip) return null;
+        const subRect = sub.getBoundingClientRect();
+        return {
+            sub_left: sub.style.left,
+            sub_right: sub.style.right,
+            tip_left: tip.style.left,
+            tip_right: tip.style.right,
+            sub_right_edge: subRect.right,
+            viewport_width: window.innerWidth,
+        };
+    }""")
+
+    assert state is not None, "subpanel/modeTip not present"
+    # Subpanel anchored right.
+    assert state["sub_left"] == "auto", (
+        f"Subpanel must be right-anchored when overflowing — "
+        f"sub.style.left was {state['sub_left']!r}, expected 'auto'"
+    )
+    assert state["sub_right"] == "0px" or state["sub_right"] == "0", (
+        f"sub.style.right was {state['sub_right']!r}, expected '0' or '0px'"
+    )
+    # modeTip mirrors the same anchor.
+    assert state["tip_left"] == "auto", (
+        f"modeTip must mirror subpanel's right-anchor — "
+        f"tip.style.left was {state['tip_left']!r}, expected 'auto'"
+    )
+    assert state["tip_right"] == "0px" or state["tip_right"] == "0"
+    # Geometry sanity: the subpanel's right edge is now inside the viewport.
+    assert state["sub_right_edge"] <= state["viewport_width"], (
+        f"Even after the flip, subpanel's right edge ({state['sub_right_edge']}) "
+        f"is past viewport ({state['viewport_width']}). "
+        f"The fix isn't actually keeping it inside."
+    )
+
+    # Now move the toolbar to the left side via direct style mutation,
+    # then trigger a re-position by toggling Element mode off & on. With
+    # toolbar at left:16, the subpanel should fit naturally and the
+    # anchor should flip BACK to left:0.
+    await pw_page.evaluate("""() => {
+        const tb = document.getElementById('__uiinsp_toolbar');
+        tb.style.left = '16px';
+        tb.style.right = 'auto';
+    }""")
+    await pw_page.keyboard.press("Escape")  # exit Element mode
+    await asyncio.sleep(0.2)
+    await pw_page.keyboard.press("Alt+s")  # re-enter
+    await asyncio.sleep(0.2)
+    # Re-click red-box to repopulate subpanel.
+    el = await pw_page.query_selector("#red-box")
+    box = await el.bounding_box()
+    cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    await pw_page.mouse.move(cx, cy)
+    await asyncio.sleep(0.2)
+    await pw_page.mouse.click(cx, cy)
+
+    state2 = await pw_page.evaluate("""() => {
+        const sub = document.getElementById('__uiinsp_subtoolbar');
+        const tip = document.getElementById('__uiinsp_mode_tip');
+        return {
+            sub_left: sub.style.left,
+            sub_right: sub.style.right,
+            tip_left: tip.style.left,
+            tip_right: tip.style.right,
+        };
+    }""")
+    # With toolbar at left:16, subpanel fits fine — back to default left-anchor.
+    assert state2["sub_left"] == "0px" or state2["sub_left"] == "0", (
+        f"After moving toolbar left, subpanel should anchor left again — "
+        f"sub.style.left was {state2['sub_left']!r}"
+    )
+    assert state2["sub_right"] == "auto"
+    assert state2["tip_left"] == "0px" or state2["tip_left"] == "0"
+    assert state2["tip_right"] == "auto"

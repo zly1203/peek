@@ -25,22 +25,23 @@ async def _click_send(page):
     """Click the Send button in the unified subpanel (all modes share this
     since v0.5.13 — was previously a per-mode `sendbar_btn`).
 
-    Uses dispatch_event to fire the click handler directly, bypassing
-    Playwright's actionability + viewport checks. With the default
-    top-right toolbar position and the longest hint text (e.g.
-    "Element: <div#red-box> — click another to change"), the subpanel
-    can extend a handful of pixels past the viewport's right edge.
-    `force=True` does not bypass the viewport check — only dispatch_event
-    does. The button's click listener fires identically; real users on a
-    real browser either drag the toolbar elsewhere (saved in localStorage)
-    or have a wider viewport, so this doesn't bite in practice.
+    Uses a real click via Playwright (not dispatch_event), so this also
+    serves as a regression test for v0.5.16's positionSubpanel horizontal-
+    overflow fix: when the toolbar is at the default top-right position
+    and the hint text is long (e.g. "Element: <div#red-box> — click
+    another to change"), the subpanel auto-flips to right-anchor so its
+    right edge no longer spills past the viewport. If that flip ever
+    regresses, this helper will start failing with "element is outside of
+    the viewport".
 
     The button transitions through dim → (loading >500ms) → success "✓" →
     subpanel hide. Tests call `wait_for_capture` on the bridge after this,
     which waits for the POST to land — no extra delay for success flash.
     """
-    await page.wait_for_selector("#__uiinsp_subtoolbar_send", state="visible", timeout=3000)
-    await page.dispatch_event("#__uiinsp_subtoolbar_send", "click")
+    send_btn = await page.wait_for_selector(
+        "#__uiinsp_subtoolbar_send", state="visible", timeout=3000
+    )
+    await send_btn.click()
 
 
 # ─── Initialization & UI (4) ───

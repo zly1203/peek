@@ -10,7 +10,7 @@
   // clicked ✕ and then re-clicked the bookmarklet) would throw
   // "already declared" and the IIFE never runs. Locally scoped means each
   // load gets a fresh binding.
-  const __PEEK_INSPECTOR_VERSION = "0.5.15";
+  const __PEEK_INSPECTOR_VERSION = "0.5.16";
 
   if (window.__inspectorActive) {
     const prev = window.__inspectorVersion || "pre-0.5";
@@ -746,13 +746,21 @@
     positionModeTip();
   }
 
+  // Whether the subpanel is currently right-anchored to the toolbar
+  // (vs. the default left-anchor). Read-only signal for positionModeTip
+  // to mirror the same anchor and keep the visual column aligned.
+  function subpanelIsRightAnchored() {
+    if (!subtoolbar) return false;
+    return subtoolbar.style.left === "auto";
+  }
+
   function positionModeTip() {
     if (!modeTip || modeTip.style.display === "none") return;
     // Stack below the subpanel when the subpanel is below the pill;
-    // above the subpanel when the subpanel flipped above.
+    // above the subpanel when the subpanel flipped above. 4px gap matches
+    // the subpanel's gap to the pill — keeps the entire pill / subpanel
+    // / modeTip stack on one consistent thin-rule rhythm.
     const subVisible = subtoolbar && subtoolbar.style.display !== "none";
-    // 4px gap matches the subpanel's gap to the pill — keeps the entire
-    // pill / subpanel / modeTip stack on one consistent thin-rule rhythm.
     if (subVisible) {
       const subBelow = subtoolbar.style.top !== "auto" && subtoolbar.style.top !== "";
       const subH = subtoolbar.offsetHeight || 32;
@@ -763,17 +771,49 @@
         modeTip.style.bottom = `calc(100% + 4px + ${subH}px + 4px)`;
         modeTip.style.top = "auto";
       }
+      // Mirror subpanel's horizontal anchor — if the subpanel flipped
+      // right because of viewport overflow, modeTip should too, otherwise
+      // they'd separate into two visually-disconnected columns.
+      if (subpanelIsRightAnchored()) {
+        modeTip.style.left = "auto";
+        modeTip.style.right = "0";
+      } else {
+        modeTip.style.right = "auto";
+        modeTip.style.left = "0";
+      }
     } else {
+      // Subpanel hidden — modeTip alone, sits right under the pill.
+      // Re-evaluate horizontal anchor from scratch since the modeTip
+      // itself can also overflow on a far-right toolbar (rare — modeTip
+      // is shorter than subpanel — but cheap to handle for symmetry).
       modeTip.style.top = "calc(100% + 4px)";
       modeTip.style.bottom = "auto";
+      modeTip.style.left = "0";
+      modeTip.style.right = "auto";
+      const tipRect = modeTip.getBoundingClientRect();
+      if (tipRect.right > window.innerWidth - 4) {
+        modeTip.style.left = "auto";
+        modeTip.style.right = "0";
+      }
     }
   }
 
-  // Flip sub-panel above the pill if there's no room below
+  // Position the sub-panel relative to the pill, flipping vertically
+  // (top↔bottom) if there's no room below, and horizontally (left↔right)
+  // if the panel would extend past the viewport's right edge.
+  //
+  // The horizontal flip matters because the subpanel's content (long
+  // element-mode hints like "Element: <div#some-long-id> — click another
+  // to change") is often wider than the toolbar itself. With the default
+  // top-right toolbar position (right: 16px) and a left-anchored subpanel,
+  // the subpanel's right edge could end up tens of pixels past the
+  // viewport, putting the Send button partially or fully off-screen.
   function positionSubpanel() {
     if (!subtoolbar || subtoolbar.style.display === "none") return;
     const pillRect = toolbar.getBoundingClientRect();
     const subH = subtoolbar.offsetHeight || 36;
+
+    // Vertical flip — flip above the pill if there's no room below.
     const spaceBelow = window.innerHeight - pillRect.bottom;
     if (spaceBelow < subH + 12) {
       subtoolbar.style.top = "auto";
@@ -781,6 +821,19 @@
     } else {
       subtoolbar.style.bottom = "auto";
       subtoolbar.style.top = "calc(100% + 4px)";
+    }
+
+    // Horizontal flip — start by resetting to the default left-anchor so
+    // we measure the natural layout, never a stale right-anchored one
+    // from a prior call. Then check if the right edge spills past the
+    // viewport; if so, flip to right-anchor (subpanel grows leftward
+    // from the toolbar's right edge instead of rightward from its left).
+    subtoolbar.style.left = "0";
+    subtoolbar.style.right = "auto";
+    const subRect = subtoolbar.getBoundingClientRect();
+    if (subRect.right > window.innerWidth - 4) {
+      subtoolbar.style.left = "auto";
+      subtoolbar.style.right = "0";
     }
   }
 
